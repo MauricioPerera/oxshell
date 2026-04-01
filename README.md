@@ -181,7 +181,7 @@ Conversations are automatically saved and can be resumed:
 
 Automatically prevents context window overflow:
 
-- **Model-aware**: Knows limits for each Workers AI model (Hermes=4K, Granite=131K, etc.)
+- **Model-aware**: Knows limits for 10+ Workers AI models (4K–256K)
 - **Auto-trigger**: Activates at 80% of context limit
 - **Smart summarization**: Sends old messages to the same model for structured summary
 - **Preserves recent**: Keeps last 6 messages intact (tool call pairs stay coherent)
@@ -258,11 +258,22 @@ Auto-discovers tools, prefixes with `mcp__servername__toolname`, graceful degrad
 
 ## Models Tested
 
-| Model | Context | Tool Calling | Notes |
-|-------|---------|-------------|-------|
-| `@hf/nousresearch/hermes-2-pro-mistral-7b` | ~4K | Basic | Fast, free tier |
-| `@cf/ibm-granite/granite-4.0-h-micro` | 131K | Native | Best quality, paid |
-| `@cf/meta/llama-4-scout-17b-16e-instruct` | 131K | Native | Newest, paid |
+Tested across 10+ Workers AI models. Tool call normalization handles 3 formats automatically: OpenAI standard, Qwen `<tools>` tags, and Granite double-escaped JSON.
+
+| # | Model | Context | Tool Calling | Pricing (in/out per M) | Notes |
+|---|-------|---------|-------------|----------------------|-------|
+| 🥇 | `@cf/mistralai/mistral-small-3.1-24b-instruct` | 128K | ✅ Native | $0.35 / $0.56 | **Best tool calling** — completes tasks cleanly |
+| 🥈 | `@cf/nvidia/nemotron-mini-128k-instruct-3-120b` | 256K | ✅ Native | $0.50 / $1.50 | Best reasoning, stops properly |
+| 🥉 | `@cf/ibm-granite/granite-4.0-h-micro` | 131K | ✅ Native | — | Best price/quality ratio |
+| 4 | `@cf/moonshotai/kimi-k2.5` | 256K | ✅ Native | $0.60 / $3.00 | Reasoning model, but loops on tools |
+| 5 | `@cf/openai/gpt-oss-120b` | 128K | ✅ Native | $0.35 / $0.75 | Reasoning, but loops on tools |
+| 6 | `@cf/openai/gpt-oss-20b` | 128K | ✅ Native | $0.20 / $0.30 | Lightweight reasoning, loops on tools |
+| 7 | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | 24K | ✅ Native | $0.29 / $2.25 | Good model, but loops on tools |
+| 8 | `@cf/meta/llama-4-scout-17b-16e-instruct` | 131K | ✅ Native | — | Newest Meta model |
+| 9 | `@cf/qwen/qwen2.5-coder-32b-instruct` | 32K | ⚠️ `<tools>` tags | $0.66 / $1.00 | Non-standard format, slow on Workers AI |
+| 10 | `@hf/nousresearch/hermes-2-pro-mistral-7b` | ~4K | Basic | Free | Fast, free tier |
+
+> **"Loops on tools"** = model calls tools correctly but doesn't stop after receiving results, hitting MAX_TURNS (15). This is model behavior, not a code bug.
 
 ## Tests
 
