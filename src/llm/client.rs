@@ -106,7 +106,14 @@ impl WorkersAIClient {
                 Ok(response) => {
                     let status = response.status();
                     if status.is_success() {
-                        let api_response: ChatCompletionResponse = response.json().await?;
+                        let mut api_response: ChatCompletionResponse = response.json().await?;
+                        // Normalize tool calls for models that embed them in content
+                        // (e.g., Qwen uses <tools> tags instead of tool_calls array)
+                        for choice in &mut api_response.choices {
+                            if let Some(ref mut msg) = choice.message {
+                                msg.normalize_tool_calls();
+                            }
+                        }
                         return Ok(api_response);
                     }
 

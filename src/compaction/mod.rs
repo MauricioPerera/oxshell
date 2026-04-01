@@ -45,6 +45,8 @@ pub fn model_context_limit(model: &str) -> usize {
         131_072
     } else if m.contains("llama-3") {
         8_192
+    } else if m.contains("qwen2.5-coder-32b") || m.contains("qwen2.5-coder-14b") {
+        32_768
     } else if m.contains("deepseek") {
         16_384
     } else if m.contains("qwen") {

@@ -159,6 +159,51 @@ pub struct ChatMessage {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
+impl ChatMessage {
+    /// Normalize tool calls from models that embed them in content
+    /// (e.g., Qwen uses `<tools>{"name":"...","arguments":{...}}</tools>` in content)
+    pub fn normalize_tool_calls(&mut self) {
+        if self.tool_calls.is_some() {
+            return; // Already has proper tool_calls
+        }
+
+        let content = match &self.content {
+            Some(c) => c.clone(),
+            None => return,
+        };
+
+        // Detect <tools>...</tools> pattern (Qwen format)
+        if let Some(start) = content.find("<tools>") {
+            if let Some(end) = content.find("</tools>") {
+                let tools_json = content[start + 7..end].trim();
+
+                // Try parsing as single tool call: {"name":"...","arguments":{...}}
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(tools_json) {
+                    let name = parsed.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                    let arguments = parsed.get("arguments")
+                        .map(|a| serde_json::to_string(a).unwrap_or_default())
+                        .unwrap_or_default();
+
+                    if !name.is_empty() {
+                        self.tool_calls = Some(vec![ToolCall {
+                            id: format!("call_{}", uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()),
+                            call_type: "function".to_string(),
+                            function: FunctionCall { name, arguments },
+                        }]);
+                        // Clear content (it was just the tool call)
+                        let before = content[..start].trim();
+                        if before.is_empty() {
+                            self.content = None;
+                        } else {
+                            self.content = Some(before.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeltaMessage {
     pub role: Option<Role>,
