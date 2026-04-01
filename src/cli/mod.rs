@@ -61,4 +61,6 @@ pub enum Command {
         #[arg(short, long, default_value_t = 20)]
         limit: usize,
     },
+    /// Run diagnostic checks
+    Doctor,
 }

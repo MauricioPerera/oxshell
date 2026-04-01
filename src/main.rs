@@ -4,11 +4,13 @@ mod compaction;
 mod config;
 mod context;
 mod cost;
+mod doctor;
 mod hooks;
 mod llm;
 mod mcp;
 mod memory;
 mod permissions;
+mod plugins;
 mod session;
 mod skills;
 mod storage;
@@ -66,6 +68,19 @@ async fn main() -> Result<()> {
                     );
                 }
             }
+            return Ok(());
+        }
+        Some(cli::Command::Doctor) => {
+            let cfg = config::OxshellConfig::load();
+            let cwd = Path::new(&args.cwd);
+            let data_dir = dirs::data_local_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("oxshell");
+            let memory = crate::memory::store::MemoryStore::new(&data_dir).ok();
+            let mem_count = memory.as_ref().map(|m| m.count()).unwrap_or(0);
+            let plugin_registry = plugins::PluginRegistry::new(cwd);
+            let checks = doctor::run_diagnostics(cwd, &cfg, &plugin_registry, mem_count);
+            println!("{}", doctor::format_diagnostics(&checks));
             return Ok(());
         }
         None => {}

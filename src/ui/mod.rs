@@ -621,6 +621,21 @@ impl App {
                     )));
                 }
             }
+            "/doctor" => {
+                let cfg = crate::config::OxshellConfig::load();
+                let plugin_registry = crate::plugins::PluginRegistry::new(
+                    std::path::Path::new(&self.context.cwd),
+                );
+                let checks = crate::doctor::run_diagnostics(
+                    std::path::Path::new(&self.context.cwd),
+                    &cfg,
+                    &plugin_registry,
+                    self.context.memory.count(),
+                );
+                self.chat_log.push(ChatMessage::system(
+                    crate::doctor::format_diagnostics(&checks),
+                ));
+            }
             "/exit" | "/quit" | "/q" => {
                 self.running = false;
             }
