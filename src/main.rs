@@ -206,7 +206,10 @@ async fn run_oneshot(
 
     const MAX_TURNS: usize = 15;
 
-    for _turn in 0..MAX_TURNS {
+    for turn in 0..MAX_TURNS {
+        if turn == MAX_TURNS - 1 {
+            eprintln!("[warning: max turns ({MAX_TURNS}) reached — response may be incomplete]");
+        }
         let response = client
             .send_message(&system, &messages, &tools.schema())
             .await?;

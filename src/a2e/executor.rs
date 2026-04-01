@@ -106,10 +106,20 @@ async fn exec_api_call(op: &ApiCallOp, store: &mut WorkflowStore) -> Result<()> 
 
     let response = request.send().await?;
     let status = response.status();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .unwrap_or_else(|_| serde_json::json!({"error": "Failed to parse response"}));
+    let response_text = response.text().await.unwrap_or_default();
+
+    // Try JSON parse; if non-JSON (HTML error pages, etc.), wrap as error
+    let body: serde_json::Value = serde_json::from_str(&response_text).unwrap_or_else(|_| {
+        if status.is_success() {
+            serde_json::json!({"text": response_text})
+        } else {
+            serde_json::json!({"error": format!("HTTP {}: {}", status.as_u16(), &response_text[..response_text.len().min(500)])})
+        }
+    });
+
+    if !status.is_success() {
+        bail!("API returned HTTP {}: {}", status.as_u16(), &response_text[..response_text.len().min(200)]);
+    }
 
     let result = serde_json::json!({
         "status": status.as_u16(),

@@ -31,7 +31,16 @@ impl OxshellConfig {
             return Self::default();
         }
         match std::fs::read_to_string(&path) {
-            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Ok(content) => match serde_json::from_str(&content) {
+                Ok(config) => config,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Invalid config at {}. Run 'oxshell setup' to fix. Error: {e}",
+                        path.display()
+                    );
+                    Self::default()
+                }
+            },
             Err(_) => Self::default(),
         }
     }

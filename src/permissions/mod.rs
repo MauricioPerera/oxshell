@@ -40,11 +40,11 @@ impl PermissionManager {
                 if self.auto_approve_all {
                     return true;
                 }
-                let approved = self.session_approved.lock().unwrap();
+                let approved = self.session_approved.lock().unwrap_or_else(|e| e.into_inner());
                 if approved.contains(tool_name) {
                     return true;
                 }
-                let allowed = self.allowed_tools.lock().unwrap();
+                let allowed = self.allowed_tools.lock().unwrap_or_else(|e| e.into_inner());
                 allowed.contains(tool_name)
             }
         }
@@ -77,12 +77,12 @@ impl PermissionManager {
     }
 
     pub fn approve_session(&self, tool_name: &str) {
-        let mut approved = self.session_approved.lock().unwrap();
+        let mut approved = self.session_approved.lock().unwrap_or_else(|e| e.into_inner());
         approved.insert(tool_name.to_string());
     }
 
     pub fn approve_always(&self, tool_name: &str) {
-        let mut allowed = self.allowed_tools.lock().unwrap();
+        let mut allowed = self.allowed_tools.lock().unwrap_or_else(|e| e.into_inner());
         allowed.insert(tool_name.to_string());
     }
 
@@ -93,11 +93,11 @@ impl PermissionManager {
                 if self.auto_approve_all {
                     return false;
                 }
-                let approved = self.session_approved.lock().unwrap();
+                let approved = self.session_approved.lock().unwrap_or_else(|e| e.into_inner());
                 if approved.contains(tool_name) {
                     return false;
                 }
-                let allowed = self.allowed_tools.lock().unwrap();
+                let allowed = self.allowed_tools.lock().unwrap_or_else(|e| e.into_inner());
                 !allowed.contains(tool_name)
             }
         }

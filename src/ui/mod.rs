@@ -405,9 +405,9 @@ impl App {
             let (cmd, args) = text.split_once(' ').unwrap_or((&text, ""));
             let skill_name = &cmd[1..]; // strip leading /
 
-            if self.skills.get(skill_name).is_some() {
+            if let Some(skill) = self.skills.get(skill_name).cloned() {
                 // Execute skill inline — inject rendered prompt as user message
-                let skill = self.skills.get(skill_name).unwrap().clone();
+                let skill = skill;
                 let rendered = skill.render(args);
                 self.chat_log.push(ChatMessage::system(format!(
                     "Running skill: {} {}",

@@ -4,3 +4,5 @@ Cargo.lock
 *.mmdb.bak
 .oxshell/mcp.json
 test.txt
+path/
+.oxshell/MEMORY.md
