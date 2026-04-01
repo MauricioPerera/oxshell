@@ -45,14 +45,28 @@ impl OxshellConfig {
         }
     }
 
-    /// Save config to disk
+    /// Save config to disk.
+    /// WARNING: API token is stored in plaintext. Use OS keychain for production.
     pub fn save(&self) -> Result<()> {
         let path = Self::path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+
+        // Set restrictive permissions on config file (contains API token)
         let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, json).context("Failed to save config")?;
+        std::fs::write(&path, &json).context("Failed to save config")?;
+
+        // Best-effort: restrict file permissions to owner-only
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
+
+        if self.cf_token.is_some() {
+            tracing::debug!("Config saved with API token (plaintext). File: {}", path.display());
+        }
         Ok(())
     }
 

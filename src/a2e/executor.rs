@@ -126,7 +126,7 @@ async fn exec_api_call(op: &ApiCallOp, store: &mut WorkflowStore) -> Result<()> 
         "data": body,
     });
 
-    store.set(&op.output_path, result);
+    store.set(&op.output_path, result)?;
     Ok(())
 }
 
@@ -149,7 +149,7 @@ fn exec_filter(op: &FilterDataOp, store: &mut WorkflowStore) -> Result<()> {
         })
         .collect();
 
-    store.set(&op.output_path, serde_json::Value::Array(filtered));
+    store.set(&op.output_path, serde_json::Value::Array(filtered))?;
     Ok(())
 }
 
@@ -236,7 +236,7 @@ fn exec_transform(op: &TransformDataOp, store: &mut WorkflowStore) -> Result<()>
         other => bail!("Unknown transform: '{other}'"),
     };
 
-    store.set(&op.output_path, result);
+    store.set(&op.output_path, result)?;
     Ok(())
 }
 
@@ -294,7 +294,7 @@ async fn exec_loop(
     let mut results = Vec::new();
 
     for item in items {
-        store.set(item_var, item);
+        store.set(item_var, item)?;
 
         if let Some(body) = all_ops.get(&op.body_op) {
             execute_operation(body, store, all_ops).await?;
@@ -306,7 +306,7 @@ async fn exec_loop(
         }
     }
 
-    store.set(&op.output_path, serde_json::Value::Array(results));
+    store.set(&op.output_path, serde_json::Value::Array(results))?;
     Ok(())
 }
 
@@ -318,7 +318,7 @@ fn exec_store_data(op: &StoreDataOp, store: &mut WorkflowStore) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Path '{}' not found", op.input_path))?;
 
     // Store under the key path
-    store.set(&format!("/store/{}", op.key), value);
+    store.set(&format!("/store/{}", op.key), value)?;
     Ok(())
 }
 
@@ -347,7 +347,7 @@ fn exec_merge(op: &MergeDataOp, store: &mut WorkflowStore) -> Result<()> {
                     }
                 }
             }
-            store.set(&op.output_path, serde_json::Value::Array(merged));
+            store.set(&op.output_path, serde_json::Value::Array(merged))?;
         }
         "object" => {
             let mut merged = serde_json::Map::new();
@@ -356,7 +356,7 @@ fn exec_merge(op: &MergeDataOp, store: &mut WorkflowStore) -> Result<()> {
                     merged.extend(obj);
                 }
             }
-            store.set(&op.output_path, serde_json::Value::Object(merged));
+            store.set(&op.output_path, serde_json::Value::Object(merged))?;
         }
         other => bail!("Unknown merge strategy: '{other}'"),
     }

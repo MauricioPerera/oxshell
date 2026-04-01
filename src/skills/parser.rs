@@ -115,6 +115,14 @@ pub fn parse_skill_content(
             .collect();
     }
 
+    // Validate glob patterns at parse time (H5: prevent regex injection at runtime)
+    for pattern in &paths {
+        let p = if pattern.starts_with('!') { &pattern[1..] } else { pattern.as_str() };
+        if globset::GlobBuilder::new(p).literal_separator(false).build().is_err() {
+            return Err(anyhow::anyhow!("Invalid glob pattern in paths: '{pattern}'"));
+        }
+    }
+
     let is_conditional = !paths.is_empty();
 
     Ok(Skill {

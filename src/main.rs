@@ -313,21 +313,34 @@ async fn run_oneshot(
             context.persist_message(&Message::assistant_text(text.clone()));
         }
 
+        // Coordinator: wait for pending task notifications (max 3 retries, 30s each)
         if context.args.coordinator {
-            match tokio::time::timeout(std::time::Duration::from_secs(30), task_rx.recv()).await {
-                Ok(Some(notif)) => {
-                    eprintln!("[task completed: {}]", notif.task_id);
-                    let n = Message::user(notif.xml);
-                    context.persist_message(&n);
-                    messages.push(n);
-                    while let Ok(n2) = task_rx.try_recv() {
-                        let m = Message::user(n2.xml);
-                        context.persist_message(&m);
-                        messages.push(m);
+            let mut retries = 0;
+            const MAX_NOTIFICATION_RETRIES: usize = 3;
+            while retries < MAX_NOTIFICATION_RETRIES {
+                match tokio::time::timeout(std::time::Duration::from_secs(30), task_rx.recv()).await {
+                    Ok(Some(notif)) => {
+                        eprintln!("[task completed: {}]", notif.task_id);
+                        let n = Message::user(notif.xml);
+                        context.persist_message(&n);
+                        messages.push(n);
+                        while let Ok(n2) = task_rx.try_recv() {
+                            let m = Message::user(n2.xml);
+                            context.persist_message(&m);
+                            messages.push(m);
+                        }
+                        break; // Got notifications, continue conversation
                     }
-                    continue;
+                    _ => {
+                        retries += 1;
+                        if retries >= MAX_NOTIFICATION_RETRIES {
+                            eprintln!("[coordinator: no task notifications after {MAX_NOTIFICATION_RETRIES} retries]");
+                        }
+                    }
                 }
-                _ => {}
+            }
+            if retries < MAX_NOTIFICATION_RETRIES {
+                continue; // Process received notifications
             }
         }
         break;
