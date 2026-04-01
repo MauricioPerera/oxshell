@@ -366,7 +366,7 @@ fn exec_merge(op: &MergeDataOp, store: &mut WorkflowStore) -> Result<()> {
 
 // ─── Helpers ────────────────────────────────────────────
 
-fn extract_array(value: &serde_json::Value) -> Result<Vec<serde_json::Value>> {
+pub(crate) fn extract_array(value: &serde_json::Value) -> Result<Vec<serde_json::Value>> {
     match value {
         serde_json::Value::Array(items) => Ok(items.clone()),
         // Auto-extract from .data field (common API response pattern)
@@ -381,7 +381,7 @@ fn extract_array(value: &serde_json::Value) -> Result<Vec<serde_json::Value>> {
     }
 }
 
-fn evaluate_condition(item: &serde_json::Value, cond: &FilterCondition) -> bool {
+pub(crate) fn evaluate_condition(item: &serde_json::Value, cond: &FilterCondition) -> bool {
     let field_val = item.get(&cond.field);
 
     match cond.operator.as_str() {
