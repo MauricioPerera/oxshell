@@ -42,7 +42,7 @@ pub fn model_context_limit(model: &str) -> usize {
     } else if m.contains("llama-3.1") || m.contains("llama-4") {
         131_072
     } else if m.contains("llama-3.3") {
-        131_072
+        24_000 // fp8-fast variant has 24K context
     } else if m.contains("llama-3") {
         8_192
     } else if m.contains("qwen2.5-coder-32b") || m.contains("qwen2.5-coder-14b") {

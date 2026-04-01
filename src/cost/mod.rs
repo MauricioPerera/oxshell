@@ -18,7 +18,7 @@ fn get_pricing(model: &str) -> ModelPricing {
     } else if m.contains("llama-4") {
         ModelPricing { input_per_m: 0.05, output_per_m: 0.25 }
     } else if m.contains("llama-3.3-70b") {
-        ModelPricing { input_per_m: 0.043, output_per_m: 0.22 }
+        ModelPricing { input_per_m: 0.29, output_per_m: 2.25 }
     } else if m.contains("llama-3.1-8b") || m.contains("llama-3-8b") {
         ModelPricing { input_per_m: 0.011, output_per_m: 0.011 }
     } else if m.contains("qwen2.5-coder-32b") {
