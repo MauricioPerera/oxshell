@@ -15,9 +15,11 @@ mod session;
 mod skills;
 mod storage;
 mod tasks;
+mod theme;
 mod tools;
 mod ui;
 mod vim;
+mod voice;
 
 use anyhow::Result;
 use clap::Parser;

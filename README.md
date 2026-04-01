@@ -112,9 +112,9 @@ oxshell --auto-approve -p "Fix all lint errors"
 ## Architecture
 
 ```
-oxshell (~8,500 LOC Rust, 53 source files)
+oxshell v1.0 (~11,500 LOC Rust, 75 source files)
 ├── a2e/           Native A2E executor (8 declarative operations)
-├── cli/           CLI args + setup/sessions subcommands + --resume
+├── cli/           CLI args + setup/sessions/doctor subcommands + --resume
 ├── compaction/    Auto context compaction (model-aware limits)
 ├── config/        Setup wizard + ~/.oxshell/config.json
 ├── context/       System prompt builder (memory + skills + coordinator)
@@ -122,12 +122,16 @@ oxshell (~8,500 LOC Rust, 53 source files)
 ├── mcp/           MCP client (stdio transport, auto-discovery)
 ├── memory/        Persistent typed memories (minimemory, BM25 + vector, RRF)
 ├── permissions/   RBAC (auto-approve, session, always, input validation)
+├── plugins/       Plugin system (manifest, discovery, registry)
 ├── session/       JSONL session persistence + resume
 ├── skills/        Reusable prompts (SKILL.md, bundled + custom, inline/fork)
 ├── storage/       Conversation history (minimemory)
 ├── tasks/         Background tasks + sub-agents + coordinator mode
+├── theme/         5 color themes (dark, light, solarized, monokai, nord)
 ├── tools/         12 tools (bash, file_*, glob, grep, skill, a2e, task_*)
-└── ui/            ratatui TUI (streaming, tool approvals, task notifications)
+├── ui/            ratatui TUI (streaming, tool approvals, task notifications)
+├── vim/           Vim mode (motions, operators, state machine)
+└── voice/         Voice input (audio capture + Whisper STT)
 ```
 
 ## Features

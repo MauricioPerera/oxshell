@@ -13,6 +13,8 @@ pub struct OxshellConfig {
     pub account_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
 }
 
 impl OxshellConfig {
