@@ -7,8 +7,6 @@ pub struct PromptRequest {
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
-    pub auto_approve: bool,
-    #[serde(default)]
     pub session_id: Option<String>,
 }
 

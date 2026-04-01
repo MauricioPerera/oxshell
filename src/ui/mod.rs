@@ -41,8 +41,10 @@ pub struct App {
     pub waiting_for_response: bool,
     pub pending_approval: Option<PendingApproval>,
     pub total_usage: Usage,
-    /// Receives notifications when background tasks complete
     pub task_notification_rx: tokio::sync::mpsc::Receiver<crate::tasks::manager::TaskNotification>,
+    pub theme: crate::theme::Theme,
+    pub vim: crate::vim::VimState,
+    pub voice: crate::voice::VoiceState,
 }
 
 pub struct PendingApproval {
@@ -100,6 +102,15 @@ impl App {
             pending_approval: None,
             total_usage: Usage::default(),
             task_notification_rx,
+            theme: {
+                let cfg = crate::config::OxshellConfig::load();
+                let name = cfg.theme.as_deref()
+                    .and_then(crate::theme::ThemeName::from_str)
+                    .unwrap_or(crate::theme::ThemeName::Dark);
+                crate::theme::Theme::from_name(name)
+            },
+            vim: crate::vim::VimState::new(false), // Disabled by default, enable via /vim
+            voice: crate::voice::VoiceState::new(),
         })
     }
 
@@ -173,9 +184,82 @@ impl App {
                             self.input.cursor = 1;
                             self.handle_approval_input(&response_tx).await;
                         }
-                        // Text input — UTF-8 safe via InputState
+                        // Voice: Ctrl+R to start/stop recording
+                        (KeyModifiers::CONTROL, KeyCode::Char('r')) => {
+                            match self.voice.mode {
+                                crate::voice::VoiceMode::Idle => {
+                                    if let Err(e) = self.voice.start_recording() {
+                                        self.chat_log.push(ChatMessage::system(format!("Voice: {e}")));
+                                    } else {
+                                        self.chat_log.push(ChatMessage::system("Recording... Press Ctrl+R to stop".into()));
+                                        // Spawn async recording task
+                                        let tx = response_tx.clone();
+                                        let cf_token = {
+                                            let (t, a, _) = self.client.credentials();
+                                            (t, a)
+                                        };
+                                        tokio::spawn(async move {
+                                            match crate::voice::capture::record_audio(10).await {
+                                                Ok(path) => {
+                                                    match crate::voice::capture::transcribe(&path, &cf_token.0, &cf_token.1).await {
+                                                        Ok(text) => { let _ = tx.send(AppEvent::VoiceTranscript(text)).await; }
+                                                        Err(e) => { let _ = tx.send(AppEvent::Error(format!("STT: {e}"))).await; }
+                                                    }
+                                                }
+                                                Err(e) => { let _ = tx.send(AppEvent::Error(format!("Recording: {e}"))).await; }
+                                            }
+                                        });
+                                    }
+                                }
+                                crate::voice::VoiceMode::Recording => {
+                                    self.voice.stop_recording();
+                                    self.chat_log.push(ChatMessage::system("Processing audio...".into()));
+                                }
+                                _ => {}
+                            }
+                        }
+                        // Text input — routed through Vim state machine if enabled
                         (_, KeyCode::Char(c)) => {
-                            self.input.insert_char(c);
+                            if self.vim.enabled {
+                                use crate::vim::state::VimAction;
+                                match self.vim.process_key(c, &self.input.buffer, self.input.cursor) {
+                                    VimAction::InsertChar(ch) => self.input.insert_char(ch),
+                                    VimAction::Delete(n) => { for _ in 0..n { self.input.delete(); } }
+                                    VimAction::Backspace(n) => { for _ in 0..n { self.input.backspace(); } }
+                                    VimAction::MoveCursor(delta) => {
+                                        if delta > 0 { for _ in 0..delta { self.input.move_right(); } }
+                                        else { for _ in 0..(-delta) { self.input.move_left(); } }
+                                    }
+                                    VimAction::MoveTo(target) => {
+                                        use crate::vim::state::CursorTarget;
+                                        match target {
+                                            CursorTarget::Start => self.input.move_home(),
+                                            CursorTarget::End => self.input.move_end(),
+                                            CursorTarget::FirstNonBlank => {
+                                                let pos = crate::vim::motions::first_non_blank(&self.input.buffer);
+                                                self.input.cursor = pos;
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    VimAction::EnterInsert | VimAction::EnterNormal => {}
+                                    VimAction::Submit => {
+                                        if !self.input.buffer.is_empty() && !self.waiting_for_response {
+                                            self.submit_message(&response_tx).await;
+                                        }
+                                    }
+                                    VimAction::DeleteLine => { self.input.clear(); }
+                                    VimAction::ChangeToEnd => {
+                                        while self.input.cursor < self.input.buffer.len() {
+                                            self.input.delete();
+                                        }
+                                    }
+                                    VimAction::PassThrough => self.input.insert_char(c),
+                                    VimAction::None => {}
+                                }
+                            } else {
+                                self.input.insert_char(c);
+                            }
                         }
                         (_, KeyCode::Backspace) => {
                             self.input.backspace();
@@ -280,11 +364,24 @@ impl App {
                         self.chat_log.push(ChatMessage::tool_result(content));
                         self.continue_conversation(&response_tx).await;
                     }
+                    AppEvent::VoiceTranscript(text) => {
+                        self.voice.set_transcript(text.clone());
+                        // Inject transcript as user input
+                        self.input.buffer = text;
+                        self.input.cursor = self.input.buffer.len();
+                        self.chat_log.push(ChatMessage::system("Voice transcribed. Press Enter to send.".into()));
+                    }
                     AppEvent::Error(e) => {
                         self.chat_log
                             .push(ChatMessage::error(format!("Error: {e}")));
                         self.waiting_for_response = false;
                         self.status.state = "Error".into();
+                        // Reset voice state on error
+                        if self.voice.mode == crate::voice::VoiceMode::Recording
+                            || self.voice.mode == crate::voice::VoiceMode::Processing
+                        {
+                            self.voice.reset();
+                        }
                     }
                 }
             }
@@ -636,6 +733,42 @@ impl App {
                     crate::doctor::format_diagnostics(&checks),
                 ));
             }
+            "/vim" => {
+                self.vim.enabled = !self.vim.enabled;
+                if self.vim.enabled {
+                    self.vim.mode = crate::vim::VimMode::Normal;
+                    self.chat_log.push(ChatMessage::system("Vim mode ON (Esc=Normal, i=Insert)".into()));
+                } else {
+                    self.vim.mode = crate::vim::VimMode::Insert;
+                    self.chat_log.push(ChatMessage::system("Vim mode OFF".into()));
+                }
+            }
+            cmd if cmd.starts_with("/theme") => {
+                let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
+                if parts.len() == 2 {
+                    if let Some(name) = crate::theme::ThemeName::from_str(parts[1].trim()) {
+                        self.theme = crate::theme::Theme::from_name(name);
+                        self.chat_log.push(ChatMessage::system(format!("Theme: {}", name.as_str())));
+                        // Save to config
+                        let mut cfg = crate::config::OxshellConfig::load();
+                        cfg.theme = Some(name.as_str().to_string());
+                        let _ = cfg.save();
+                    } else {
+                        let available: Vec<&str> = crate::theme::ThemeName::all()
+                            .iter().map(|t| t.as_str()).collect();
+                        self.chat_log.push(ChatMessage::system(format!(
+                            "Unknown theme. Available: {}", available.join(", ")
+                        )));
+                    }
+                } else {
+                    let available: Vec<&str> = crate::theme::ThemeName::all()
+                        .iter().map(|t| t.as_str()).collect();
+                    self.chat_log.push(ChatMessage::system(format!(
+                        "Current: {}. Available: {}. Usage: /theme <name>",
+                        self.theme.name.as_str(), available.join(", ")
+                    )));
+                }
+            }
             "/exit" | "/quit" | "/q" => {
                 self.running = false;
             }
@@ -654,6 +787,7 @@ enum AppEvent {
         id: String,
         output: crate::tools::ToolOutput,
     },
+    VoiceTranscript(String),
     Error(String),
 }
 

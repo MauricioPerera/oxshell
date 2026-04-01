@@ -118,55 +118,37 @@ pub async fn transcribe(
     Ok(text)
 }
 
+/// Correct base64 encoding — processes all data in one pass
 fn base64_encode(data: &[u8]) -> String {
-    use std::io::Write;
-    let mut buf = Vec::new();
-    let mut encoder = base64_writer(&mut buf);
-    encoder.write_all(data).unwrap_or_default();
-    drop(encoder);
-    String::from_utf8(buf).unwrap_or_default()
-}
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = Vec::with_capacity((data.len() + 2) / 3 * 4);
+    let mut i = 0;
 
-// Simple base64 encoding (avoid adding base64 crate)
-fn base64_writer(output: &mut Vec<u8>) -> impl std::io::Write + '_ {
-    struct B64Writer<'a>(&'a mut Vec<u8>, Vec<u8>);
-
-    impl<'a> std::io::Write for B64Writer<'a> {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.1.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-            let data = &self.1;
-            let mut i = 0;
-            while i + 2 < data.len() {
-                let b0 = data[i] as usize;
-                let b1 = data[i + 1] as usize;
-                let b2 = data[i + 2] as usize;
-                self.0.push(CHARS[b0 >> 2]);
-                self.0.push(CHARS[((b0 & 3) << 4) | (b1 >> 4)]);
-                self.0.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)]);
-                self.0.push(CHARS[b2 & 0x3f]);
-                i += 3;
-            }
-            let remaining = data.len() - i;
-            if remaining == 1 {
-                let b0 = data[i] as usize;
-                self.0.push(CHARS[b0 >> 2]);
-                self.0.push(CHARS[(b0 & 3) << 4]);
-                self.0.extend_from_slice(b"==");
-            } else if remaining == 2 {
-                let b0 = data[i] as usize;
-                let b1 = data[i + 1] as usize;
-                self.0.push(CHARS[b0 >> 2]);
-                self.0.push(CHARS[((b0 & 3) << 4) | (b1 >> 4)]);
-                self.0.push(CHARS[(b1 & 0xf) << 2]);
-                self.0.push(b'=');
-            }
-            Ok(())
-        }
+    while i + 2 < data.len() {
+        let (b0, b1, b2) = (data[i] as usize, data[i + 1] as usize, data[i + 2] as usize);
+        result.push(CHARS[b0 >> 2]);
+        result.push(CHARS[((b0 & 3) << 4) | (b1 >> 4)]);
+        result.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)]);
+        result.push(CHARS[b2 & 0x3f]);
+        i += 3;
     }
 
-    B64Writer(output, Vec::new())
+    match data.len() - i {
+        1 => {
+            let b0 = data[i] as usize;
+            result.push(CHARS[b0 >> 2]);
+            result.push(CHARS[(b0 & 3) << 4]);
+            result.extend_from_slice(b"==");
+        }
+        2 => {
+            let (b0, b1) = (data[i] as usize, data[i + 1] as usize);
+            result.push(CHARS[b0 >> 2]);
+            result.push(CHARS[((b0 & 3) << 4) | (b1 >> 4)]);
+            result.push(CHARS[(b1 & 0xf) << 2]);
+            result.push(b'=');
+        }
+        _ => {}
+    }
+
+    String::from_utf8(result).unwrap_or_default()
 }

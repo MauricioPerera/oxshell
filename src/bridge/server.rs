@@ -7,8 +7,9 @@ use axum::{
     routing::{get, post},
 };
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{CorsLayer, AllowOrigin};
 
 use super::{routes, ws};
 
@@ -23,13 +24,16 @@ pub struct AppState {
     pub tool_names: Vec<String>,
     pub tool_schema: Vec<crate::llm::types::ToolDefinition>,
     pub started_at: Instant,
+    /// Cached reqwest client (reuse connections)
+    pub http_client: reqwest::Client,
+    /// Active session count
+    pub active_sessions: AtomicUsize,
 }
 
 /// HTTP + WebSocket bridge server
 pub struct BridgeServer;
 
 impl BridgeServer {
-    /// Start the bridge server on the given port
     pub async fn start(
         port: u16,
         cf_token: String,
@@ -51,10 +55,27 @@ impl BridgeServer {
             tool_names,
             tool_schema,
             started_at: Instant::now(),
+            http_client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()?,
+            active_sessions: AtomicUsize::new(0),
         });
 
+        // Restrictive CORS — localhost only
+        let cors = CorsLayer::new()
+            .allow_origin(AllowOrigin::predicate(|origin, _| {
+                let host = origin.as_bytes();
+                host.starts_with(b"http://localhost")
+                    || host.starts_with(b"http://127.0.0.1")
+                    || host.starts_with(b"http://[::1]")
+            }))
+            .allow_methods([
+                axum::http::Method::GET,
+                axum::http::Method::POST,
+            ])
+            .allow_headers([axum::http::header::CONTENT_TYPE]);
+
         let app = Router::new()
-            // REST API
             .route("/status", get(routes::status))
             .route("/prompt", post(routes::prompt))
             .route("/tools", get(routes::list_tools))
@@ -62,9 +83,8 @@ impl BridgeServer {
             .route("/sessions", get(routes::list_sessions))
             .route("/memory", get(routes::memory_stats))
             .route("/doctor", get(routes::doctor))
-            // WebSocket
             .route("/ws", get(ws_handler))
-            .layer(CorsLayer::permissive())
+            .layer(cors)
             .with_state(state);
 
         let addr = format!("127.0.0.1:{port}");
@@ -72,17 +92,17 @@ impl BridgeServer {
         println!();
         println!("  REST API:");
         println!("    GET  /status    — Server info");
-        println!("    POST /prompt    — Execute prompt (JSON body)");
+        println!("    POST /prompt    — Execute prompt (JSON: {{\"prompt\":\"...\"}})");
         println!("    GET  /tools     — List tools");
         println!("    GET  /skills    — List skills");
         println!("    GET  /sessions  — Recent sessions");
         println!("    GET  /memory    — Memory stats");
         println!("    GET  /doctor    — Run diagnostics");
         println!();
-        println!("  WebSocket:");
-        println!("    ws://{addr}/ws  — Streaming interaction");
-        println!();
+        println!("  WebSocket: ws://{addr}/ws");
+        println!("  CORS: localhost only");
         println!("  Model: {model}");
+        println!();
         println!("  Press Ctrl+C to stop");
 
         let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -92,10 +112,14 @@ impl BridgeServer {
     }
 }
 
-/// WebSocket upgrade handler
 async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| ws::handle_ws(socket, state))
+    state.active_sessions.fetch_add(1, Ordering::Relaxed);
+    let state_clone = state.clone();
+    ws.on_upgrade(move |socket| async move {
+        ws::handle_ws(socket, state_clone.clone()).await;
+        state_clone.active_sessions.fetch_sub(1, Ordering::Relaxed);
+    })
 }

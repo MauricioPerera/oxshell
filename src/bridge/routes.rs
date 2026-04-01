@@ -5,51 +5,45 @@ use axum::{
     http::StatusCode,
 };
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use super::server::AppState;
 use super::types::*;
 
-/// GET /status — server health and info
+/// GET /status
 pub async fn status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> {
-    let uptime = state.started_at.elapsed().as_secs();
     Json(StatusResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
         model: state.model.clone(),
-        session_count: 0, // TODO: track active sessions
+        session_count: state.active_sessions.load(Ordering::Relaxed),
         memory_count: state.memory_count,
         skills: state.skill_names.clone(),
         tools: state.tool_names.clone(),
-        uptime_secs: uptime,
+        uptime_secs: state.started_at.elapsed().as_secs(),
     })
 }
 
-/// POST /prompt — execute a prompt and return result
+/// POST /prompt — execute a prompt (tools require explicit approval via WebSocket)
 pub async fn prompt(
     State(state): State<Arc<AppState>>,
     Json(req): Json<PromptRequest>,
 ) -> Result<Json<PromptResponse>, (StatusCode, String)> {
-    let session_id = req
-        .session_id
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let session_id = req.session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    // Build system prompt
     let system = format!(
         "You are oxshell, an AI coding assistant. Be concise and direct.\nWorking directory: {}",
         state.cwd
     );
 
-    // Create messages
     let messages = vec![crate::llm::types::Message::user(req.prompt.clone())];
 
-    // Send to Workers AI
-    let client = match crate::llm::WorkersAIClient::new(
+    // Reuse credentials from state — no cloning into new client
+    let model = req.model.unwrap_or_else(|| state.model.clone());
+    let client = crate::llm::WorkersAIClient::new(
         Some(state.cf_token.clone()),
         Some(state.account_id.clone()),
-        req.model.unwrap_or_else(|| state.model.clone()),
-    ) {
-        Ok(c) => c,
-        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
-    };
+        model,
+    ).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let response = client
         .send_message(&system, &messages, &state.tool_schema)
@@ -58,38 +52,29 @@ pub async fn prompt(
 
     let choice = response.choices.first()
         .ok_or((StatusCode::BAD_GATEWAY, "No response from model".to_string()))?;
-
     let msg = choice.message.as_ref()
         .ok_or((StatusCode::BAD_GATEWAY, "Empty response".to_string()))?;
 
     let response_text = msg.content.clone().unwrap_or_default();
     let usage = response.usage.unwrap_or_default();
 
-    // Handle tool calls if present and auto_approve is set
-    let mut tool_results = Vec::new();
-    if req.auto_approve {
-        if let Some(ref tool_calls) = msg.tool_calls {
-            let tools = crate::tools::ToolRegistry::new();
-            let permissions = crate::permissions::PermissionManager::new(true);
-
-            for tc in tool_calls {
-                let input = tc.function.parse_arguments();
-                let output = tools.execute(&tc.function.name, &input, &permissions)
-                    .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                tool_results.push(ToolCallInfo {
-                    name: tc.function.name.clone(),
-                    result: output.content,
-                    is_error: output.is_error,
-                });
-            }
+    // Tool calls are REPORTED but NOT auto-executed via REST.
+    // Use WebSocket for interactive tool approval flow.
+    let mut tool_calls_info = Vec::new();
+    if let Some(ref tool_calls) = msg.tool_calls {
+        for tc in tool_calls {
+            tool_calls_info.push(ToolCallInfo {
+                name: tc.function.name.clone(),
+                result: format!("Tool '{}' requires approval. Use WebSocket /ws for interactive mode.", tc.function.name),
+                is_error: false,
+            });
         }
     }
 
     Ok(Json(PromptResponse {
         session_id,
         response: response_text,
-        tool_calls: tool_results,
+        tool_calls: tool_calls_info,
         usage: UsageInfo {
             prompt_tokens: usage.prompt_tokens,
             completion_tokens: usage.completion_tokens,
@@ -98,23 +83,21 @@ pub async fn prompt(
     }))
 }
 
-/// GET /tools — list available tools
+/// GET /tools
 pub async fn list_tools(State(state): State<Arc<AppState>>) -> Json<Vec<String>> {
     Json(state.tool_names.clone())
 }
 
-/// GET /skills — list available skills
+/// GET /skills
 pub async fn list_skills(State(state): State<Arc<AppState>>) -> Json<Vec<String>> {
     Json(state.skill_names.clone())
 }
 
-/// GET /sessions — list recent sessions
+/// GET /sessions
 pub async fn list_sessions(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<serde_json::Value>>, (StatusCode, String)> {
-    let data_dir = dirs::data_local_dir()
-        .unwrap_or_default()
-        .join("oxshell");
+    let data_dir = dirs::data_local_dir().unwrap_or_default().join("oxshell");
     let store = crate::session::SessionStore::new(&data_dir)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -123,26 +106,22 @@ pub async fn list_sessions(
 
     let result: Vec<serde_json::Value> = sessions.iter().map(|s| {
         serde_json::json!({
-            "id": s.id,
-            "title": s.title,
+            "id": s.id, "title": s.title,
             "created_at": s.created_at.to_rfc3339(),
             "updated_at": s.updated_at.to_rfc3339(),
             "message_count": s.message_count,
-            "model": s.model,
         })
     }).collect();
 
     Ok(Json(result))
 }
 
-/// GET /memory — memory stats
+/// GET /memory
 pub async fn memory_stats(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    Json(serde_json::json!({
-        "count": state.memory_count,
-    }))
+    Json(serde_json::json!({ "count": state.memory_count }))
 }
 
-/// GET /doctor — run diagnostics
+/// GET /doctor
 pub async fn doctor(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let cfg = crate::config::OxshellConfig::load();
     let cwd = std::path::Path::new(&state.cwd);

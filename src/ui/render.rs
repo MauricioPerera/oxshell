@@ -1,15 +1,13 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 use unicode_width::UnicodeWidthStr;
 
 use super::App;
-
-const BRAND_COLOR: Color = Color::Rgb(245, 158, 11); // Cloudflare orange
 
 pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
@@ -27,21 +25,17 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
+    let t = &app.theme;
     let mut lines: Vec<Line> = Vec::new();
 
     for msg in &app.chat_log {
         let (prefix, style) = match msg.role.as_str() {
-            "user" => (
-                "❯ ",
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            "assistant" => ("◆ ", Style::default().fg(BRAND_COLOR)),
-            "system" => ("● ", Style::default().fg(Color::DarkGray)),
-            "error" => ("✗ ", Style::default().fg(Color::Red)),
-            "tool" => ("⚙ ", Style::default().fg(Color::Cyan)),
-            _ => ("  ", Style::default()),
+            "user" => ("❯ ", Style::default().fg(t.user).add_modifier(Modifier::BOLD)),
+            "assistant" => ("◆ ", Style::default().fg(t.assistant)),
+            "system" => ("● ", Style::default().fg(t.system)),
+            "error" => ("✗ ", Style::default().fg(t.error)),
+            "tool" => ("⚙ ", Style::default().fg(t.tool)),
+            _ => ("  ", Style::default().fg(t.fg)),
         };
 
         let content_lines: Vec<&str> = msg.content.lines().collect();
@@ -59,10 +53,7 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
         }
 
         if msg.streaming {
-            lines.push(Line::from(Span::styled(
-                "  ▌",
-                Style::default().fg(BRAND_COLOR),
-            )));
+            lines.push(Line::from(Span::styled("  ▌", Style::default().fg(t.accent))));
         }
 
         lines.push(Line::from(""));
@@ -86,6 +77,23 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_input(f: &mut Frame, app: &App, area: Rect) {
+    let t = &app.theme;
+
+    let vim_indicator = if app.vim.enabled {
+        match app.vim.mode {
+            crate::vim::VimMode::Normal => "[N] ",
+            crate::vim::VimMode::Insert => "[I] ",
+        }
+    } else {
+        ""
+    };
+
+    let voice_indicator = match app.voice.mode {
+        crate::voice::VoiceMode::Recording => "🎤 ",
+        crate::voice::VoiceMode::Processing => "⏳ ",
+        _ => "",
+    };
+
     let prompt = if app.pending_approval.is_some() {
         "[y/n/a] "
     } else if app.waiting_for_response {
@@ -94,12 +102,12 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
         "❯ "
     };
 
-    let input_text = format!("{prompt}{}", app.input.buffer);
+    let input_text = format!("{vim_indicator}{voice_indicator}{prompt}{}", app.input.buffer);
 
     let style = if app.pending_approval.is_some() {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(t.accent)
     } else {
-        Style::default().fg(Color::White)
+        Style::default().fg(t.prompt)
     };
 
     let input = Paragraph::new(input_text)
@@ -107,15 +115,16 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::TOP)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(Style::default().fg(t.border)),
         );
 
     f.render_widget(input, area);
 
-    // Unicode-safe cursor positioning using display width
-    let prompt_width = UnicodeWidthStr::width(prompt) as u16;
-    let cursor_display = app.input.cursor_display_width() as u16;
-    let cursor_x = area.x + prompt_width + cursor_display;
+    let prefix_width = UnicodeWidthStr::width(vim_indicator)
+        + UnicodeWidthStr::width(voice_indicator)
+        + UnicodeWidthStr::width(prompt);
+    let cursor_display = app.input.cursor_display_width();
+    let cursor_x = area.x + prefix_width as u16 + cursor_display as u16;
     let cursor_y = area.y + 1;
     if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
         f.set_cursor_position((cursor_x, cursor_y));
@@ -123,7 +132,18 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_status(f: &mut Frame, app: &App, area: Rect) {
-    let left = format!(" {} ", app.status.state);
+    let t = &app.theme;
+
+    let vim_status = if app.vim.enabled {
+        match app.vim.mode {
+            crate::vim::VimMode::Normal => " VIM:N ",
+            crate::vim::VimMode::Insert => " VIM:I ",
+        }
+    } else {
+        ""
+    };
+
+    let left = format!(" {} {}", app.status.state, vim_status);
     let right = format!(
         "{}  ↑{}  ↓{}  {} ",
         app.total_usage.format_cost(),
@@ -140,9 +160,7 @@ fn draw_status(f: &mut Frame, app: &App, area: Rect) {
     let status_text = format!("{left}{}{right}", " ".repeat(padding));
 
     let status = Paragraph::new(status_text).style(
-        Style::default()
-            .bg(Color::Rgb(30, 30, 30))
-            .fg(Color::Gray),
+        Style::default().bg(t.status_bg).fg(t.status_fg),
     );
 
     f.render_widget(status, area);
