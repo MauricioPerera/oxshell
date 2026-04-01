@@ -36,7 +36,20 @@ cp target/release/oxshell ~/.local/bin/
 ## Setup
 
 ```bash
-# Required: Cloudflare credentials
+# Interactive setup wizard (recommended)
+oxshell setup
+```
+
+The wizard will:
+1. Ask for your Cloudflare API token ([create one here](https://dash.cloudflare.com/profile/api-tokens) with Workers AI permissions)
+2. Auto-detect your Account ID
+3. Let you choose a default model
+4. Test the connection
+5. Save config to `~/.oxshell/config.json`
+
+**Manual setup** (alternative):
+
+```bash
 export CLOUDFLARE_API_TOKEN="your-token"
 export CLOUDFLARE_ACCOUNT_ID="your-account-id"
 

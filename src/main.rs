@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod context;
 mod llm;
 mod mcp;
@@ -34,6 +35,28 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
+
+    // Handle subcommands
+    if let Some(cli::Command::Setup) = args.command {
+        return config::setup::run_setup().await;
+    }
+
+    // Load config (CLI flags > env vars > ~/.oxshell/config.json)
+    let cfg = config::OxshellConfig::load();
+    let resolved_token = cfg.resolve_token(&args.cf_token);
+    let resolved_account = cfg.resolve_account_id(&args.account_id);
+    let resolved_model = cfg.resolve_model(&args.model);
+
+    // Check if configured — prompt setup if not
+    if resolved_token.is_none() || resolved_account.is_none() {
+        eprintln!("oxshell is not configured. Run: oxshell setup");
+        eprintln!();
+        eprintln!("Or set environment variables:");
+        eprintln!("  export CLOUDFLARE_API_TOKEN=\"your-token\"");
+        eprintln!("  export CLOUDFLARE_ACCOUNT_ID=\"your-account-id\"");
+        std::process::exit(1);
+    }
+
     let cwd = Path::new(&args.cwd);
 
     let data_dir = dirs::data_local_dir()
@@ -41,7 +64,6 @@ async fn main() -> Result<()> {
         .join("oxshell");
     std::fs::create_dir_all(&data_dir)?;
 
-    // Initialize stores
     let conversations = ConversationStore::new(&data_dir)?;
     let memory = MemoryStore::new(&data_dir)?;
 
@@ -69,9 +91,9 @@ async fn main() -> Result<()> {
     }
 
     let client = WorkersAIClient::new(
-        args.cf_token.clone(),
-        args.account_id.clone(),
-        args.model.clone(),
+        resolved_token,
+        resolved_account,
+        resolved_model,
     )?;
 
     let permissions = PermissionManager::new(args.auto_approve);

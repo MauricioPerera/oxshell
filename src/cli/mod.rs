@@ -1,18 +1,21 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 /// oxshell — AI coding assistant for the terminal, powered by Cloudflare Workers AI
 #[derive(Parser, Debug, Clone)]
 #[command(name = "oxshell", version, about)]
 pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// Prompt to run in non-interactive mode (pipe mode)
     #[arg(short, long)]
     pub prompt: Option<String>,
 
-    /// Cloudflare API token (defaults to CLOUDFLARE_API_TOKEN env var)
+    /// Cloudflare API token (overrides config + env)
     #[arg(long)]
     pub cf_token: Option<String>,
 
-    /// Cloudflare Account ID (defaults to CLOUDFLARE_ACCOUNT_ID env var)
+    /// Cloudflare Account ID (overrides config + env)
     #[arg(long)]
     pub account_id: Option<String>,
 
@@ -43,4 +46,10 @@ pub struct Args {
     /// Verbose logging
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum Command {
+    /// Interactive setup wizard — configure Cloudflare credentials and model
+    Setup,
 }
