@@ -49,6 +49,10 @@ unicode-width = "0.2"
 async-trait = "0.1"
 tokio-util = "0.7"
 
+# Bridge server (HTTP + WebSocket)
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.5", features = ["cors"] }
+
 [dev-dependencies]
 tempfile = "3"
 

@@ -63,4 +63,9 @@ pub enum Command {
     },
     /// Run diagnostic checks
     Doctor,
+    /// Start HTTP + WebSocket bridge server
+    Serve {
+        #[arg(short, long, default_value_t = 3080)]
+        port: u16,
+    },
 }

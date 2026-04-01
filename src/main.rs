@@ -1,4 +1,5 @@
 mod a2e;
+mod bridge;
 mod cli;
 mod compaction;
 mod config;
@@ -84,6 +85,34 @@ async fn main() -> Result<()> {
             let checks = doctor::run_diagnostics(cwd, &cfg, &plugin_registry, mem_count);
             println!("{}", doctor::format_diagnostics(&checks));
             return Ok(());
+        }
+        Some(cli::Command::Serve { port }) => {
+            let cfg = config::OxshellConfig::load();
+            let token = cfg.resolve_token(&args.cf_token)
+                .ok_or_else(|| anyhow::anyhow!("Not configured. Run: oxshell setup"))?;
+            let account = cfg.resolve_account_id(&args.account_id)
+                .ok_or_else(|| anyhow::anyhow!("Not configured. Run: oxshell setup"))?;
+            let model = cfg.resolve_model(&args.model);
+
+            let cwd_str = args.cwd.clone();
+            let cwd = Path::new(&cwd_str);
+            let data_dir = dirs::data_local_dir().unwrap_or_default().join("oxshell");
+            let memory = crate::memory::store::MemoryStore::new(&data_dir).ok();
+            let mem_count = memory.as_ref().map(|m| m.count()).unwrap_or(0);
+            let skill_registry = SkillRegistry::new(cwd);
+            let mut tools = ToolRegistry::new();
+            tools.register_external(Box::new(crate::tools::a2e::A2ETool));
+
+            let skill_names: Vec<String> = skill_registry.active_skills()
+                .iter().map(|s| s.name.clone()).collect();
+            let tool_names: Vec<String> = tools.schema()
+                .iter().map(|t| t.function.name.clone()).collect();
+            let tool_schema = tools.schema();
+
+            return bridge::BridgeServer::start(
+                *port, token, account, model, cwd_str,
+                mem_count, skill_names, tool_names, tool_schema,
+            ).await;
         }
         None => {}
     }
