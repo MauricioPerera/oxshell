@@ -31,6 +31,8 @@ fn get_pricing(model: &str) -> ModelPricing {
         ModelPricing { input_per_m: 0.011, output_per_m: 0.011 }
     } else if m.contains("deepseek") {
         ModelPricing { input_per_m: 0.011, output_per_m: 0.011 }
+    } else if m.contains("mistral-small-3") {
+        ModelPricing { input_per_m: 0.35, output_per_m: 0.56 }
     } else if m.contains("hermes") || m.contains("mistral") {
         ModelPricing { input_per_m: 0.011, output_per_m: 0.011 }
     } else {

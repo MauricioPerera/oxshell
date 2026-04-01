@@ -55,6 +55,8 @@ pub fn model_context_limit(model: &str) -> usize {
         16_384
     } else if m.contains("qwen") {
         32_768
+    } else if m.contains("mistral-small-3") {
+        128_000
     } else if m.contains("mistral") || m.contains("hermes") {
         4_096
     } else {
