@@ -3,32 +3,13 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{Tool, ToolOutput};
+use crate::a2e::{Workflow, execute_workflow};
 use crate::permissions::ToolPermission;
 
-const MAX_RESPONSE_BYTES: usize = 8192;
-
-/// A2E (Agent-to-Execution) tool.
-/// Sends a declarative JSONL workflow to an A2E server for execution.
-pub struct A2ETool {
-    server_url: String,
-    api_key: String,
-}
-
-impl A2ETool {
-    pub fn new(server_url: String, api_key: String) -> Self {
-        // Warn if not HTTPS
-        if !server_url.starts_with("https://") && !server_url.starts_with("http://localhost") && !server_url.starts_with("http://127.0.0.1") {
-            tracing::warn!("A2E server URL is not HTTPS — credentials may be transmitted insecurely");
-        }
-        Self { server_url, api_key }
-    }
-
-    pub fn from_env() -> Option<Self> {
-        let server_url = std::env::var("A2E_SERVER_URL").ok()?;
-        let api_key = std::env::var("A2E_API_KEY").ok().unwrap_or_default();
-        Some(Self::new(server_url, api_key))
-    }
-}
+/// Native A2E (Agent-to-Execution) tool.
+/// Parses and executes JSONL workflows inline — no external server needed.
+/// Supports: ApiCall, FilterData, TransformData, Conditional, Loop, StoreData, Wait, MergeData.
+pub struct A2ETool;
 
 #[async_trait]
 impl Tool for A2ETool {
@@ -37,8 +18,13 @@ impl Tool for A2ETool {
     }
 
     fn description(&self) -> &str {
-        "Execute a declarative workflow via A2E. Send JSONL with operationUpdate and beginExecution. \
-         Operations: ApiCall, FilterData, TransformData, Conditional, Loop, StoreData, MergeData."
+        "Execute a declarative A2E workflow. Send JSONL with operations (ApiCall, FilterData, \
+         TransformData, Conditional, Loop, StoreData, Wait, MergeData) that get validated and \
+         executed locally. No external server needed.\n\n\
+         Example JSONL:\n\
+         {\"type\":\"operationUpdate\",\"operationId\":\"fetch\",\"operation\":{\"ApiCall\":{\"method\":\"GET\",\"url\":\"https://api.example.com/data\",\"outputPath\":\"/workflow/data\"}}}\n\
+         {\"type\":\"operationUpdate\",\"operationId\":\"filter\",\"operation\":{\"FilterData\":{\"inputPath\":\"/workflow/data\",\"conditions\":[{\"field\":\"status\",\"operator\":\"==\",\"value\":\"active\"}],\"outputPath\":\"/workflow/active\"}}}\n\
+         {\"type\":\"beginExecution\",\"executionId\":\"exec-1\",\"operationOrder\":[\"fetch\",\"filter\"]}"
     }
 
     fn input_schema(&self) -> Value {
@@ -47,11 +33,11 @@ impl Tool for A2ETool {
             "properties": {
                 "workflow": {
                     "type": "string",
-                    "description": "JSONL workflow. Each line is a JSON object with operationUpdate or beginExecution."
+                    "description": "JSONL workflow. Each line is a JSON object. Use operationUpdate to define steps and beginExecution to run them."
                 },
                 "validate_only": {
                     "type": "boolean",
-                    "description": "If true, only validate without executing",
+                    "description": "If true, only parse and validate without executing",
                     "default": false
                 }
             },
@@ -64,7 +50,7 @@ impl Tool for A2ETool {
     }
 
     async fn execute(&self, input: &Value) -> Result<ToolOutput> {
-        let workflow = input
+        let jsonl = input
             .get("workflow")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'workflow' parameter"))?;
@@ -74,50 +60,33 @@ impl Tool for A2ETool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        let endpoint = if validate_only {
-            format!("{}/validate", self.server_url)
-        } else {
-            format!("{}/execute", self.server_url)
+        // Parse JSONL into Workflow
+        let workflow = match Workflow::parse(jsonl) {
+            Ok(w) => w,
+            Err(e) => return Ok(ToolOutput::error(format!("Workflow parse error: {e}"))),
         };
 
-        let client = reqwest::Client::new();
-        let mut request = client
-            .post(&endpoint)
-            .header("Content-Type", "application/jsonl")
-            .body(workflow.to_string());
-
-        if !self.api_key.is_empty() {
-            request = request.bearer_auth(&self.api_key);
+        if validate_only {
+            return Ok(ToolOutput::success(format!(
+                "Workflow valid: {} operations, execution order: [{}]",
+                workflow.operations.len(),
+                workflow.execution_order.join(", ")
+            )));
         }
 
-        match request.send().await {
-            Ok(resp) => {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
+        // Execute workflow natively
+        match execute_workflow(&workflow).await {
+            Ok(result) => {
+                let formatted = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|_| format!("{result:?}"));
 
-                // Truncate large responses
-                let truncated = if body.len() > MAX_RESPONSE_BYTES {
-                    format!("{}...\n(response truncated at {} bytes)", &body[..MAX_RESPONSE_BYTES], MAX_RESPONSE_BYTES)
+                if result.success {
+                    Ok(ToolOutput::success(formatted))
                 } else {
-                    body
-                };
-
-                if status.is_success() {
-                    Ok(ToolOutput::success(truncated))
-                } else {
-                    // Don't leak server details — extract message if possible
-                    let msg = serde_json::from_str::<Value>(&truncated)
-                        .ok()
-                        .and_then(|v| v.get("message").or(v.get("error")).and_then(|m| m.as_str()).map(String::from))
-                        .unwrap_or_else(|| format!("A2E server error (HTTP {status})"));
-                    Ok(ToolOutput::error(msg))
+                    Ok(ToolOutput::error(formatted))
                 }
             }
-            Err(e) => {
-                // Don't leak server URL in error
-                tracing::error!("A2E connection failed: {e}");
-                Ok(ToolOutput::error("Failed to connect to A2E server. Check A2E_SERVER_URL.".to_string()))
-            }
+            Err(e) => Ok(ToolOutput::error(format!("Workflow execution failed: {e}"))),
         }
     }
 }

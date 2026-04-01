@@ -1,3 +1,4 @@
+mod a2e;
 mod cli;
 mod config;
 mod context;
@@ -84,11 +85,8 @@ async fn main() -> Result<()> {
     // Connect MCP servers and register their tools
     let mcp_manager = mcp::MCPManager::init(cwd, &mut tools).await?;
 
-    // Register A2E tool if server configured
-    if let Some(a2e_tool) = crate::tools::a2e::A2ETool::from_env() {
-        tools.register_external(Box::new(a2e_tool));
-        tracing::info!("A2E tool registered");
-    }
+    // Register native A2E executor (always available, no external server)
+    tools.register_external(Box::new(crate::tools::a2e::A2ETool));
 
     let client = WorkersAIClient::new(
         resolved_token,
