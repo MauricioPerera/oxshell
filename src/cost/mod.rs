@@ -13,7 +13,9 @@ fn get_pricing(model: &str) -> ModelPricing {
     let m = model.to_lowercase();
 
     // Workers AI pricing (approximate, updated 2026-Q1)
-    if m.contains("gpt-oss-120b") {
+    if m.contains("kimi") {
+        ModelPricing { input_per_m: 0.60, output_per_m: 3.00 }
+    } else if m.contains("gpt-oss-120b") {
         ModelPricing { input_per_m: 0.35, output_per_m: 0.75 }
     } else if m.contains("gpt-oss") {
         ModelPricing { input_per_m: 0.20, output_per_m: 0.30 }
