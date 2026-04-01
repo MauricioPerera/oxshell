@@ -1,0 +1,6 @@
+/target
+Cargo.lock
+*.mmdb
+*.mmdb.bak
+.oxshell/mcp.json
+test.txt
