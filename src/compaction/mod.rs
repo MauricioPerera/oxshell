@@ -37,7 +37,9 @@ pub fn estimate_tokens(messages: &[Message], system_prompt: &str) -> usize {
 /// Known context window limits for Workers AI models
 pub fn model_context_limit(model: &str) -> usize {
     let m = model.to_lowercase();
-    if m.contains("nemotron") {
+    if m.contains("gpt-oss") {
+        128_000
+    } else if m.contains("nemotron") {
         256_000
     } else if m.contains("granite") {
         131_072

@@ -13,7 +13,9 @@ fn get_pricing(model: &str) -> ModelPricing {
     let m = model.to_lowercase();
 
     // Workers AI pricing (approximate, updated 2026-Q1)
-    if m.contains("nemotron") {
+    if m.contains("gpt-oss") {
+        ModelPricing { input_per_m: 0.20, output_per_m: 0.30 }
+    } else if m.contains("nemotron") {
         ModelPricing { input_per_m: 0.50, output_per_m: 1.50 }
     } else if m.contains("granite") {
         ModelPricing { input_per_m: 0.017, output_per_m: 0.11 }
