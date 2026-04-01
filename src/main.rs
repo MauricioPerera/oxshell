@@ -3,6 +3,8 @@ mod cli;
 mod compaction;
 mod config;
 mod context;
+mod cost;
+mod hooks;
 mod llm;
 mod mcp;
 mod memory;
@@ -13,6 +15,7 @@ mod storage;
 mod tasks;
 mod tools;
 mod ui;
+mod vim;
 
 use anyhow::Result;
 use clap::Parser;
