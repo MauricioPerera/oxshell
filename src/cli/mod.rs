@@ -11,6 +11,10 @@ pub struct Args {
     #[arg(short, long)]
     pub prompt: Option<String>,
 
+    /// Resume a previous session (optionally pass session ID or prefix)
+    #[arg(long)]
+    pub resume: Option<String>,
+
     /// Cloudflare API token (overrides config + env)
     #[arg(long)]
     pub cf_token: Option<String>,
@@ -50,6 +54,11 @@ pub struct Args {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum Command {
-    /// Interactive setup wizard — configure Cloudflare credentials and model
+    /// Interactive setup wizard
     Setup,
+    /// List recent sessions
+    Sessions {
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
 }

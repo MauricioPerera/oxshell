@@ -61,15 +61,37 @@ impl App {
         context: Context,
         skills: SkillRegistry,
         task_notification_rx: tokio::sync::mpsc::Receiver<crate::tasks::manager::TaskNotification>,
+        initial_messages: Vec<crate::llm::types::Message>,
     ) -> Result<Self> {
+        // Rebuild chat_log from resumed messages
+        let mut chat_log = Vec::new();
+        for msg in &initial_messages {
+            let text = msg.content.as_deref().unwrap_or("").to_string();
+            match msg.role {
+                crate::llm::types::Role::User => chat_log.push(ChatMessage::user(text)),
+                crate::llm::types::Role::Assistant => {
+                    let mut cm = ChatMessage::assistant_streaming(text);
+                    cm.streaming = false;
+                    chat_log.push(cm);
+                }
+                _ => chat_log.push(ChatMessage::system(text)),
+            }
+        }
+        if !initial_messages.is_empty() {
+            chat_log.push(ChatMessage::system(format!(
+                "[resumed session: {} messages]",
+                initial_messages.len()
+            )));
+        }
+
         Ok(Self {
             client,
             tools,
             permissions,
             context,
             skills,
-            messages: Vec::new(),
-            chat_log: Vec::new(),
+            messages: initial_messages,
+            chat_log,
             input: InputState::new(),
             scroll_offset: 0,
             status: StatusInfo::default(),
@@ -414,7 +436,9 @@ impl App {
                     skill.name,
                     if args.is_empty() { "" } else { args }
                 )));
-                self.messages.push(Message::user(rendered));
+                let msg = Message::user(rendered);
+                self.context.persist_message(&msg);
+                self.messages.push(msg);
                 self.waiting_for_response = true;
                 self.status.state = format!("Running /{skill_name}...");
                 self.send_to_api(tx).await;
@@ -426,14 +450,25 @@ impl App {
         }
 
         self.chat_log.push(ChatMessage::user(text.clone()));
-        self.messages.push(Message::user(text));
+        let msg = Message::user(text);
+        self.context.persist_message(&msg);
+        self.messages.push(msg);
         self.waiting_for_response = true;
         self.status.state = "Thinking...".into();
 
         self.send_to_api(tx).await;
     }
 
-    async fn send_to_api(&self, tx: &mpsc::Sender<AppEvent>) {
+    async fn send_to_api(&mut self, tx: &mpsc::Sender<AppEvent>) {
+        // Auto-compact if approaching context limit
+        let system_for_check = self.context.build_system_prompt();
+        if let Ok(Some(result)) = crate::compaction::maybe_compact(&self.client, &self.messages, &system_for_check).await {
+            self.chat_log.push(ChatMessage::system(format!(
+                "[compacted: {} -> {} messages]", result.original_count, result.compacted_count
+            )));
+            self.messages = result.compacted_messages;
+        }
+
         let mut system = self.context.build_system_prompt();
 
         // Add skills section
