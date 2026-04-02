@@ -9,6 +9,8 @@ const CF_API_BASE: &str = "https://api.cloudflare.com/client/v4/accounts";
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 1000;
 
+/// Workers AI client. Clone is cheap — reqwest::Client uses Arc internally.
+#[derive(Clone)]
 pub struct WorkersAIClient {
     client: Client,
     cf_token: String, // Private — never expose in logs

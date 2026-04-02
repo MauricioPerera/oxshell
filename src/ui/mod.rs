@@ -588,17 +588,9 @@ impl App {
         let tools = self.tools.schema();
         let tx = tx.clone();
 
-        let (cf_token, account_id, model) = self.client.credentials();
+        let client = self.client.clone();
 
         tokio::spawn(async move {
-            let client = match WorkersAIClient::new(Some(cf_token), Some(account_id), model) {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = tx.send(AppEvent::Error(e.to_string())).await;
-                    return;
-                }
-            };
-
             match client
                 .send_message_streaming(&system, &messages, &tools)
                 .await
