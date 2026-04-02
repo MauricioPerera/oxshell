@@ -137,11 +137,11 @@ impl App {
             &self.context.memory,
             &self.context.session_id,
         );
-        let extracted = extractor.extract_from_messages(&self.messages).unwrap_or(0);
+        let extracted = extractor.extract_from_messages(&self.messages).await.unwrap_or(0);
         if extracted > 0 {
             tracing::info!("Session end: extracted {extracted} memories");
         }
-        let _ = extractor.save_session_summary(&self.messages);
+        let _ = extractor.save_session_summary(&self.messages).await;
         self.context.flush();
 
         result
@@ -578,7 +578,7 @@ impl App {
         // Add relevant memories
         if let Some(last_user) = self.messages.iter().rev().find(|m| m.role == Role::User) {
             let query = last_user.content.as_deref().unwrap_or("");
-            let relevant = self.context.build_relevant_memories(query);
+            let relevant = self.context.build_relevant_memories(query).await;
             if !relevant.is_empty() {
                 system.push_str("\n\n");
                 system.push_str(&relevant);

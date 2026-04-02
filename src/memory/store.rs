@@ -2,23 +2,21 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use minimemory::{Config, Distance, Filter, Metadata, MetadataValue, VectorDB};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use super::types::*;
+use crate::llm::embeddings::{Embedder, EMBEDDING_DIM};
 
-const EMBEDDING_DIM: usize = 64;
 const MAX_MEMORIES: usize = 500;
 
 /// minimemory-backed typed memory store.
-/// Replaces KAIROS's filesystem-based approach with a vector DB that supports:
-/// - Typed memories (user/feedback/project/reference/session)
-/// - BM25 keyword search
-/// - Vector similarity search
-/// - Metadata filters ($eq, $gt, $regex)
-/// - Automatic persistence (.mmdb with CRC32)
+/// Uses real semantic embeddings via Workers AI (EmbeddingGemma-300m)
+/// with SHA256 fallback for offline use.
 pub struct MemoryStore {
     db: VectorDB,
     data_dir: PathBuf,
+    embedder: Arc<dyn Embedder>,
 }
 
 fn make_config() -> Config {
@@ -40,17 +38,43 @@ fn meta_int(meta: &Metadata, key: &str) -> i64 {
 }
 
 impl MemoryStore {
-    pub fn new(data_dir: &Path) -> Result<Self> {
+    pub async fn new(data_dir: &Path, embedder: Arc<dyn Embedder>) -> Result<Self> {
         std::fs::create_dir_all(data_dir)?;
         let db_path = data_dir.join("memory.mmdb");
 
         let db = if db_path.exists() {
-            VectorDB::open(&db_path).unwrap_or_else(|e| {
-                let backup = db_path.with_extension("mmdb.bak");
-                tracing::warn!("Memory DB corrupted: {e}. Backing up to {backup:?}");
-                let _ = std::fs::rename(&db_path, &backup);
-                VectorDB::new(make_config()).expect("Failed to create memory DB")
-            })
+            match VectorDB::open(&db_path) {
+                Ok(existing_db) => {
+                    // Check if dimension migration is needed
+                    let needs_migration = Self::check_migration(&existing_db);
+                    if needs_migration {
+                        tracing::info!(
+                            "Migrating memory DB from old dimensions to {EMBEDDING_DIM}-dim..."
+                        );
+                        match Self::migrate_db(&db_path, &existing_db, &embedder).await {
+                            Ok(new_db) => {
+                                tracing::info!("Memory DB migration complete");
+                                new_db
+                            }
+                            Err(e) => {
+                                tracing::warn!("Migration failed: {e}. Creating fresh DB");
+                                let backup = db_path.with_extension("mmdb.migration-failed.bak");
+                                let _ = std::fs::copy(&db_path, &backup);
+                                VectorDB::new(make_config())
+                                    .context("Failed to create memory DB")?
+                            }
+                        }
+                    } else {
+                        existing_db
+                    }
+                }
+                Err(e) => {
+                    let backup = db_path.with_extension("mmdb.bak");
+                    tracing::warn!("Memory DB corrupted: {e}. Backing up to {backup:?}");
+                    let _ = std::fs::rename(&db_path, &backup);
+                    VectorDB::new(make_config()).context("Failed to create memory DB")?
+                }
+            }
         } else {
             VectorDB::new(make_config()).context("Failed to create memory DB")?
         };
@@ -58,13 +82,86 @@ impl MemoryStore {
         Ok(Self {
             db,
             data_dir: data_dir.to_path_buf(),
+            embedder,
         })
+    }
+
+    /// Check if the existing DB needs dimension migration.
+    fn check_migration(db: &VectorDB) -> bool {
+        let ids = match db.list_ids() {
+            Ok(ids) => ids,
+            Err(_) => return false,
+        };
+
+        if ids.is_empty() {
+            return false;
+        }
+
+        // Check the first stored vector's dimension
+        if let Ok(Some((Some(vec), _))) = db.get(&ids[0]) {
+            vec.len() != EMBEDDING_DIM
+        } else {
+            false
+        }
+    }
+
+    /// Migrate DB from old dimension to new EMBEDDING_DIM.
+    async fn migrate_db(
+        db_path: &Path,
+        old_db: &VectorDB,
+        embedder: &Arc<dyn Embedder>,
+    ) -> Result<VectorDB> {
+        // Extract all entries from old DB
+        let ids = old_db.list_ids()?;
+        let mut entries: Vec<(String, Option<Metadata>)> = Vec::new();
+        let mut contents: Vec<String> = Vec::new();
+
+        for id in &ids {
+            if let Ok(Some((_, meta))) = old_db.get(id) {
+                let content = meta
+                    .as_ref()
+                    .map(|m| meta_str(m, "content"))
+                    .unwrap_or_default();
+                contents.push(if content.is_empty() {
+                    id.clone()
+                } else {
+                    content
+                });
+                entries.push((id.clone(), meta));
+            }
+        }
+
+        tracing::info!("Migrating {} memories to {EMBEDDING_DIM}-dim...", entries.len());
+
+        // Batch embed all content
+        let vectors = embedder.embed(&contents).await?;
+
+        // Backup old DB
+        let backup = db_path.with_extension("mmdb.v64.bak");
+        let _ = std::fs::copy(db_path, &backup);
+        tracing::info!("Old DB backed up to {backup:?}");
+
+        // Create new DB
+        let new_db = VectorDB::new(make_config()).context("Failed to create new memory DB")?;
+
+        // Re-insert with new embeddings
+        for ((id, meta), vec) in entries.into_iter().zip(vectors.into_iter()) {
+            if let Err(e) = new_db.insert(&id, &vec, meta) {
+                tracing::warn!("Failed to migrate memory {id}: {e}");
+            }
+        }
+
+        // Save new DB
+        new_db.save(db_path)?;
+        tracing::info!("New {EMBEDDING_DIM}-dim DB saved");
+
+        Ok(new_db)
     }
 
     // ─── Write Operations ───────────────────────────────
 
     /// Save a new typed memory entry
-    pub fn save(
+    pub async fn save(
         &self,
         name: &str,
         description: &str,
@@ -76,7 +173,13 @@ impl MemoryStore {
     ) -> Result<String> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
-        let embedding = text_to_vector(content, EMBEDDING_DIM);
+        let embedding = self
+            .embedder
+            .embed(&[content.to_string()])
+            .await?
+            .into_iter()
+            .next()
+            .context("No embedding returned")?;
 
         let tag_values: Vec<MetadataValue> = tags
             .iter()
@@ -104,9 +207,15 @@ impl MemoryStore {
     }
 
     /// Update an existing memory's content and timestamp
-    pub fn update(&self, id: &str, content: &str, description: &str) -> Result<()> {
+    pub async fn update(&self, id: &str, content: &str, description: &str) -> Result<()> {
         let now = Utc::now().to_rfc3339();
-        let embedding = text_to_vector(content, EMBEDDING_DIM);
+        let embedding = self
+            .embedder
+            .embed(&[content.to_string()])
+            .await?
+            .into_iter()
+            .next()
+            .context("No embedding returned")?;
 
         let current = self.db.get(id)?;
         if let Some((_, Some(mut meta))) = current {
@@ -147,8 +256,15 @@ impl MemoryStore {
     }
 
     /// Vector similarity search
-    pub fn vector_search(&self, query: &str, limit: usize) -> Result<Vec<MemoryMatch>> {
-        let query_vec = text_to_vector(query, EMBEDDING_DIM);
+    pub async fn vector_search(&self, query: &str, limit: usize) -> Result<Vec<MemoryMatch>> {
+        let query_vec = self
+            .embedder
+            .embed(&[query.to_string()])
+            .await?
+            .into_iter()
+            .next()
+            .context("No embedding returned for query")?;
+
         let results = self.db.search(&query_vec, limit)?;
         Ok(results
             .into_iter()
@@ -227,7 +343,6 @@ impl MemoryStore {
     }
 
     /// Delete memories older than `days` that have low recall counts.
-    /// Keeps highly-recalled memories regardless of age.
     pub fn expire_old_memories(&self, days: i64) -> Result<usize> {
         use super::retrieval::memory_age_days;
         let headers = self.scan_headers()?;
@@ -235,7 +350,6 @@ impl MemoryStore {
 
         for h in &headers {
             let age = memory_age_days(&h.updated_at);
-            // Only expire old memories with low recall
             if age > days && h.recall_count < 3 && h.memory_type != MemoryType::User {
                 if self.db.delete(&h.id)? {
                     deleted += 1;
@@ -260,9 +374,9 @@ impl MemoryStore {
         if self.db.len() > MAX_MEMORIES {
             let sessions = self.by_type(MemoryType::Session, self.db.len())?;
             let mut sorted = sessions;
-            sorted.sort_by(|a, b| a.created_at.cmp(&b.created_at)); // oldest first
+            sorted.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
-            let to_remove = sorted.len().saturating_sub(20); // Keep latest 20 sessions
+            let to_remove = sorted.len().saturating_sub(20);
             for entry in sorted.into_iter().take(to_remove) {
                 if self.db.delete(&entry.id)? {
                     total_cleaned += 1;
@@ -273,7 +387,7 @@ impl MemoryStore {
         // Phase 3: If still over, remove lowest-recall memories
         if self.db.len() > MAX_MEMORIES {
             let mut headers = self.scan_headers()?;
-            headers.sort_by_key(|h| h.recall_count); // lowest recall first
+            headers.sort_by_key(|h| h.recall_count);
             let excess = self.db.len() - MAX_MEMORIES;
             for h in headers.into_iter().take(excess) {
                 if self.db.delete(&h.id)? {
@@ -283,13 +397,20 @@ impl MemoryStore {
         }
 
         if total_cleaned > 0 {
-            tracing::info!("Consolidated memory: removed {total_cleaned} entries, {} remaining", self.db.len());
+            tracing::info!(
+                "Consolidated memory: removed {total_cleaned} entries, {} remaining",
+                self.db.len()
+            );
         }
         Ok(total_cleaned)
     }
 
     /// Load CLAUDE.md from project directory and index its content
-    pub fn bootstrap_from_claude_md(&self, cwd: &Path, session_id: &str) -> Result<usize> {
+    pub async fn bootstrap_from_claude_md(
+        &self,
+        cwd: &Path,
+        session_id: &str,
+    ) -> Result<usize> {
         let candidates = [
             "CLAUDE.md",
             ".claude/CLAUDE.md",
@@ -302,7 +423,6 @@ impl MemoryStore {
             let path = cwd.join(name);
             if path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&path) {
-                    // Check if we already indexed this file
                     let existing = self.keyword_search(name, 1)?;
                     if existing.is_empty() {
                         self.save(
@@ -313,7 +433,8 @@ impl MemoryStore {
                             "claude.md",
                             session_id,
                             &["project-instructions".to_string()],
-                        )?;
+                        )
+                        .await?;
                         count += 1;
                         tracing::info!("Indexed {name} into memory store");
                     }
@@ -352,31 +473,4 @@ fn meta_to_entry(id: &str, meta: &Metadata) -> MemoryEntry {
         session_id: meta_str(meta, "session_id"),
         recall_count: meta_int(meta, "recall_count"),
     }
-}
-
-// Freshness functions now in retrieval.rs (DRY)
-
-/// Deterministic vector from text (hash-based).
-/// For production, replace with local embeddings (Candle) or API embeddings.
-fn text_to_vector(text: &str, dim: usize) -> Vec<f32> {
-    use sha2::{Digest, Sha256};
-    let mut vector = vec![0.0f32; dim];
-    let hash = Sha256::digest(text.as_bytes());
-    for (i, byte) in hash.iter().enumerate() {
-        if i < dim {
-            vector[i] = (*byte as f32 / 255.0) * 2.0 - 1.0;
-        }
-    }
-    if dim > 32 {
-        for i in 32..dim {
-            vector[i] = vector[i % 32] * 0.5 + vector[(i + 7) % 32] * 0.5;
-        }
-    }
-    let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 0.0 {
-        for v in &mut vector {
-            *v /= norm;
-        }
-    }
-    vector
 }

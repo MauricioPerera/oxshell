@@ -19,7 +19,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(
+    pub async fn new(
         args: Args,
         conversations: ConversationStore,
         memory: MemoryStore,
@@ -29,7 +29,10 @@ impl Context {
         let cwd = args.cwd.clone();
         let memory_index = MemoryIndex::new(Path::new(&cwd));
 
-        if let Err(e) = memory.bootstrap_from_claude_md(Path::new(&cwd), &session_id) {
+        if let Err(e) = memory
+            .bootstrap_from_claude_md(Path::new(&cwd), &session_id)
+            .await
+        {
             tracing::warn!("Failed to bootstrap CLAUDE.md: {e}");
         }
 
@@ -86,10 +89,10 @@ impl Context {
         parts.join("\n\n")
     }
 
-    /// Build relevant memories for a specific query (zero API cost)
-    pub fn build_relevant_memories(&self, query: &str) -> String {
+    /// Build relevant memories for a specific query (uses real embeddings)
+    pub async fn build_relevant_memories(&self, query: &str) -> String {
         let retriever = MemoryRetriever::new(&self.memory);
-        match retriever.format_for_prompt(query) {
+        match retriever.format_for_prompt(query).await {
             Ok(text) if !text.is_empty() => text,
             _ => String::new(),
         }

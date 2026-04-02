@@ -47,6 +47,7 @@ dirs = "6"
 sha2 = "0.10"
 unicode-width = "0.2"
 async-trait = "0.1"
+lru = "0.12"
 tokio-util = "0.7"
 
 # Bridge server (HTTP + WebSocket)

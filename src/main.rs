@@ -32,6 +32,7 @@ use crate::cli::Args;
 use crate::context::Context;
 use crate::llm::WorkersAIClient;
 use crate::llm::types::Message;
+use crate::llm::embeddings::{Embedder, FallbackEmbedder, Sha256Embedder, EMBEDDING_DIM};
 use crate::memory::store::MemoryStore;
 use crate::permissions::PermissionManager;
 use crate::session::SessionStore;
@@ -79,7 +80,8 @@ async fn main() -> Result<()> {
             let data_dir = dirs::data_local_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("oxshell");
-            let memory = crate::memory::store::MemoryStore::new(&data_dir).ok();
+            let embedder: Arc<dyn Embedder> = Arc::new(Sha256Embedder::new(EMBEDDING_DIM));
+            let memory = crate::memory::store::MemoryStore::new(&data_dir, embedder).await.ok();
             let mem_count = memory.as_ref().map(|m| m.count()).unwrap_or(0);
             let plugin_registry = plugins::PluginRegistry::new(cwd);
             let checks = doctor::run_diagnostics(cwd, &cfg, &plugin_registry, mem_count);
@@ -97,7 +99,8 @@ async fn main() -> Result<()> {
             let cwd_str = args.cwd.clone();
             let cwd = Path::new(&cwd_str);
             let data_dir = dirs::data_local_dir().unwrap_or_default().join("oxshell");
-            let memory = crate::memory::store::MemoryStore::new(&data_dir).ok();
+            let serve_embedder: Arc<dyn Embedder> = Arc::new(Sha256Embedder::new(EMBEDDING_DIM));
+            let memory = crate::memory::store::MemoryStore::new(&data_dir, serve_embedder).await.ok();
             let mem_count = memory.as_ref().map(|m| m.count()).unwrap_or(0);
             let skill_registry = SkillRegistry::new(cwd);
             let mut tools = ToolRegistry::new();
@@ -136,7 +139,11 @@ async fn main() -> Result<()> {
 
     // Initialize stores
     let conversations = ConversationStore::new(&data_dir)?;
-    let memory = MemoryStore::new(&data_dir)?;
+    let embedder: Arc<dyn Embedder> = Arc::new(FallbackEmbedder::new(
+        resolved_token.clone().unwrap(),
+        resolved_account.clone().unwrap(),
+    ));
+    let memory = MemoryStore::new(&data_dir, embedder).await?;
     let session_store = SessionStore::new(&data_dir)?;
 
     // Handle --resume: load previous session or generate new ID
@@ -166,7 +173,7 @@ async fn main() -> Result<()> {
     };
 
     // Build context with session store
-    let context = Context::new(args.clone(), conversations, memory, session_store, session_id);
+    let context = Context::new(args.clone(), conversations, memory, session_store, session_id).await;
 
     // Discover skills
     let skill_registry = SkillRegistry::new(cwd);
@@ -273,7 +280,7 @@ async fn run_oneshot(
         system.push_str("\n\n");
         system.push_str(&skills_section);
     }
-    let relevant = context.build_relevant_memories(prompt);
+    let relevant = context.build_relevant_memories(prompt).await;
     if !relevant.is_empty() {
         system.push_str("\n\n");
         system.push_str(&relevant);
@@ -397,7 +404,7 @@ async fn run_oneshot(
 
     // Post-conversation: extract memories
     let mut extractor = crate::memory::extraction::MemoryExtractor::new(&context.memory, &context.session_id);
-    let extracted = extractor.extract_from_messages(&messages)?;
+    let extracted = extractor.extract_from_messages(&messages).await?;
     if extracted > 0 { eprintln!("[memory: {extracted} entries extracted]"); }
 
     Ok(())

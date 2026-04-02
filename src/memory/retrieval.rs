@@ -7,7 +7,7 @@ const MAX_RELEVANT: usize = 5;
 const MAX_CONTENT_BYTES: usize = 4096;
 
 /// Hybrid retrieval system — replaces KAIROS's Sonnet-based selection
-/// with local BM25 + vector search at zero API cost.
+/// with local BM25 + real semantic vector search via Workers AI embeddings.
 pub struct MemoryRetriever<'a> {
     store: &'a MemoryStore,
 }
@@ -19,13 +19,12 @@ impl<'a> MemoryRetriever<'a> {
 
     /// Find memories relevant to the current query.
     /// Uses hybrid search: BM25 keyword + vector similarity, deduped via RRF.
-    /// Fresh instance per query — no session accumulation issues.
-    pub fn find_relevant(&self, query: &str) -> Result<Vec<MemoryMatch>> {
+    pub async fn find_relevant(&self, query: &str) -> Result<Vec<MemoryMatch>> {
         // BM25 keyword search
         let keyword_results = self.store.keyword_search(query, MAX_RELEVANT * 2)?;
 
-        // Vector similarity search
-        let vector_results = self.store.vector_search(query, MAX_RELEVANT * 2)?;
+        // Vector similarity search (async — calls embedding API)
+        let vector_results = self.store.vector_search(query, MAX_RELEVANT * 2).await?;
 
         // Merge and deduplicate (Reciprocal Rank Fusion)
         let mut scored: std::collections::HashMap<String, ScoredMemory> =
@@ -67,7 +66,6 @@ impl<'a> MemoryRetriever<'a> {
             // Truncate at sentence boundary within 4KB limit
             if entry.content.len() > MAX_CONTENT_BYTES {
                 let truncated = &entry.content[..MAX_CONTENT_BYTES];
-                // Find last sentence end within limit
                 let cut_point = truncated
                     .rfind(". ")
                     .or_else(|| truncated.rfind(".\n"))
@@ -94,8 +92,8 @@ impl<'a> MemoryRetriever<'a> {
     }
 
     /// Format relevant memories for injection into system prompt
-    pub fn format_for_prompt(&self, query: &str) -> Result<String> {
-        let matches = self.find_relevant(query)?;
+    pub async fn format_for_prompt(&self, query: &str) -> Result<String> {
+        let matches = self.find_relevant(query).await?;
 
         if matches.is_empty() {
             return Ok(String::new());

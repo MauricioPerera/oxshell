@@ -34,7 +34,7 @@ impl<'a> MemoryExtractor<'a> {
 
     /// Process new messages since last extraction.
     /// Returns the number of memories extracted.
-    pub fn extract_from_messages(&mut self, messages: &[Message]) -> Result<usize> {
+    pub async fn extract_from_messages(&mut self, messages: &[Message]) -> Result<usize> {
         if messages.len() <= self.cursor {
             return Ok(0);
         }
@@ -74,7 +74,7 @@ impl<'a> MemoryExtractor<'a> {
                     "extraction",
                     &self.session_id,
                     &["auto-extracted".to_string()],
-                )?;
+                ).await?;
                 extracted += 1;
             }
 
@@ -87,7 +87,7 @@ impl<'a> MemoryExtractor<'a> {
                     "extraction",
                     &self.session_id,
                     &["auto-extracted".to_string()],
-                )?;
+                ).await?;
                 extracted += 1;
             }
 
@@ -100,7 +100,7 @@ impl<'a> MemoryExtractor<'a> {
                     "extraction",
                     &self.session_id,
                     &["auto-extracted".to_string()],
-                )?;
+                ).await?;
                 extracted += 1;
             }
 
@@ -113,7 +113,7 @@ impl<'a> MemoryExtractor<'a> {
                     "extraction",
                     &self.session_id,
                     &["auto-extracted".to_string()],
-                )?;
+                ).await?;
                 extracted += 1;
             }
         }
@@ -129,7 +129,7 @@ impl<'a> MemoryExtractor<'a> {
     }
 
     /// Generate session summary memory (like KAIROS SessionMemory)
-    pub fn save_session_summary(&self, messages: &[Message]) -> Result<()> {
+    pub async fn save_session_summary(&self, messages: &[Message]) -> Result<()> {
         if messages.len() < 4 {
             return Ok(()); // Too short to summarize
         }
@@ -171,7 +171,7 @@ impl<'a> MemoryExtractor<'a> {
             "session",
             &self.session_id,
             &["session-summary".to_string()],
-        )?;
+        ).await?;
 
         Ok(())
     }
