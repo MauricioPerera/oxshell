@@ -277,7 +277,7 @@ Tested across 10+ Workers AI models. Tool call normalization handles 3 formats a
 
 ## Tests
 
-66 tests across 8 test files, all passing:
+138 tests across 12 test files, all passing:
 
 ```bash
 cargo test    # Run all tests
@@ -285,7 +285,9 @@ cargo test    # Run all tests
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
+| security_tests | 47 | Bash evasion, path validation, tool call normalization, secret detection |
 | a2e_tests | 11 | JSONL parsing, workflow validation, filter conditions |
+| store_tests | 13 | Compaction, session types, sandbox limits |
 | memory_tests | 10 | Secret detection, freshness, age calculation |
 | input_tests | 10 | UTF-8 safe insert/backspace/navigation, emoji |
 | skills_tests | 11 | Frontmatter parser, lists, render, split |
