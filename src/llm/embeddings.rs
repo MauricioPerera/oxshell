@@ -16,6 +16,7 @@ pub trait Embedder: Send + Sync {
     /// Embed one or more texts into vectors. Returns one vector per input.
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
     /// Dimensionality of output vectors.
+    #[allow(dead_code)]
     fn dim(&self) -> usize;
 }
 

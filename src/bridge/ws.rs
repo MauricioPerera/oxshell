@@ -1,5 +1,5 @@
 use axum::extract::ws::{Message, WebSocket};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use std::sync::Arc;
 
 use super::server::AppState;

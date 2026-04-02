@@ -104,6 +104,7 @@ pub struct LoopOp {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct StoreDataOp {
     #[serde(rename = "inputPath")]
     pub input_path: String,

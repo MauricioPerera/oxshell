@@ -2,7 +2,7 @@ pub mod setup;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Persistent configuration stored at ~/.oxshell/config.json
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

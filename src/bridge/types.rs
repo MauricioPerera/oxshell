@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Request to send a prompt to oxshell
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct PromptRequest {
     pub prompt: String,
     #[serde(default)]
@@ -12,6 +13,7 @@ pub struct PromptRequest {
 
 /// Response from a prompt execution
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct PromptResponse {
     pub session_id: String,
     pub response: String,
@@ -20,6 +22,7 @@ pub struct PromptResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct ToolCallInfo {
     pub name: String,
     pub result: String,
@@ -27,6 +30,7 @@ pub struct ToolCallInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub struct UsageInfo {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -35,6 +39,7 @@ pub struct UsageInfo {
 
 /// Server status
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct StatusResponse {
     pub version: String,
     pub model: String,
@@ -48,6 +53,7 @@ pub struct StatusResponse {
 /// WebSocket message (client → server)
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum WsClientMessage {
     Prompt { text: String },
     Cancel,
@@ -58,6 +64,7 @@ pub enum WsClientMessage {
 /// WebSocket message (server → client)
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum WsServerMessage {
     /// Streaming text delta
     TextDelta { text: String },

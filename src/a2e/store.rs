@@ -44,6 +44,7 @@ impl WorkflowStore {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, path: &str) -> Option<&serde_json::Value> {
         self.data.get(path)
     }
@@ -56,6 +57,7 @@ impl WorkflowStore {
         &self.data
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.data.len()
     }

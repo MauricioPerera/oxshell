@@ -196,6 +196,7 @@ impl SkillRegistry {
 
     /// Activate conditional skills that match the given file paths.
     /// Called when file tools (read/write/edit) are used.
+    #[allow(dead_code)]
     pub fn activate_for_paths(&mut self, file_paths: &[&str]) {
         let mut activated = Vec::new();
 

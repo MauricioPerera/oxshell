@@ -78,6 +78,7 @@ pub struct MemoryHeader {
 
 /// Result of a memory search with relevance score
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct MemoryMatch {
     pub entry: MemoryEntry,
     pub score: f32,

@@ -46,6 +46,7 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
+    #[allow(dead_code)]
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Killed)
     }

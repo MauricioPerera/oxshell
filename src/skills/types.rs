@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 /// A loaded skill definition
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Skill {
     /// Unique name (derived from directory name)
     pub name: String,
@@ -76,6 +77,7 @@ impl Skill {
     }
 
     /// Check if this skill should activate for a given file path
+    #[allow(dead_code)]
     pub fn matches_path(&self, file_path: &str) -> bool {
         if self.paths.is_empty() {
             return false; // No paths = unconditional (always active)
@@ -98,6 +100,7 @@ impl Skill {
 }
 
 /// Simple glob matching (supports *, **, ?)
+#[allow(dead_code)]
 fn glob_match(pattern: &str, path: &str) -> bool {
     globset::GlobBuilder::new(pattern)
         .literal_separator(false)

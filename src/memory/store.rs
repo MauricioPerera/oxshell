@@ -207,6 +207,7 @@ impl MemoryStore {
     }
 
     /// Update an existing memory's content and timestamp
+    #[allow(dead_code)]
     pub async fn update(&self, id: &str, content: &str, description: &str) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         let embedding = self
@@ -229,6 +230,7 @@ impl MemoryStore {
     }
 
     /// Delete a memory by ID
+    #[allow(dead_code)]
     pub fn delete(&self, id: &str) -> Result<bool> {
         Ok(self.db.delete(id)?)
     }
@@ -317,6 +319,7 @@ impl MemoryStore {
     }
 
     /// Get a single memory by ID
+    #[allow(dead_code)]
     pub fn get(&self, id: &str) -> Result<Option<MemoryEntry>> {
         match self.db.get(id)? {
             Some((_, Some(meta))) => Ok(Some(meta_to_entry(id, &meta))),

@@ -52,6 +52,7 @@ pub struct PendingApproval {
     pub tool_call_id: String,
     pub input: serde_json::Value,
     /// Remaining tool calls to process after this one
+    #[allow(dead_code)]
     pub remaining: Vec<(String, String, serde_json::Value)>,
 }
 

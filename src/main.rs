@@ -4,8 +4,10 @@ mod cli;
 mod compaction;
 mod config;
 mod context;
+#[allow(dead_code)]
 mod cost;
 mod doctor;
+#[allow(dead_code)]
 mod hooks;
 mod llm;
 mod mcp;

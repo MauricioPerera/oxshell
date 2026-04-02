@@ -197,6 +197,7 @@ impl TaskManager {
 
     // ─── Query ──────────────────────────────────────────
 
+    #[allow(dead_code)]
     pub async fn get(&self, task_id: &str) -> Option<TaskState> {
         let tasks = self.tasks.lock().await;
         tasks.get(task_id).cloned()

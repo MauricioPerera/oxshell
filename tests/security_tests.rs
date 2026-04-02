@@ -216,6 +216,20 @@ mod path_validation {
     }
 
     #[test]
+    fn test_package_manager_tokens_blocked() {
+        assert!(!is_safe_path("~/.npmrc"));
+        assert!(!is_safe_path("/home/user/.pypirc"));
+        assert!(!is_safe_path("~/.docker/config.json"));
+        assert!(!is_safe_path("~/.netrc"));
+    }
+
+    #[test]
+    fn test_etc_blocked() {
+        assert!(!is_safe_path("/etc/shadow"));
+        assert!(!is_safe_path("/etc/passwd"));
+    }
+
+    #[test]
     fn test_safe_paths_allowed() {
         assert!(is_safe_path("src/main.rs"));
         assert!(is_safe_path("README.md"));
@@ -235,16 +249,22 @@ mod path_validation {
         assert!(!is_safe_path(".SSH/id_rsa"));
     }
 
+    /// Replica of SENSITIVE_PATHS from src/permissions/mod.rs (unified list)
+    const SENSITIVE_PATHS: &[&str] = &[
+        ".env", "credentials", ".ssh", "id_rsa", ".gnupg",
+        "/secrets", "/.netrc",
+        ".aws/", ".kube/config", "kubeconfig",
+        "azure/", "gcloud/",
+        ".npmrc", ".pypirc", ".docker/config.json",
+        "/etc/shadow", "/etc/passwd",
+        "/proc/", "/sys/", "/dev/", "/var/run/secrets/",
+        "\\system32\\", "\\windows\\config",
+        "\\appdata\\roaming\\",
+    ];
+
     fn is_safe_path(path: &str) -> bool {
         let lower = path.to_lowercase();
-        let sensitive = [
-            ".env", "credentials", ".ssh", "id_rsa", ".gnupg",
-            "/proc/", "/sys/", "/dev/", "/var/run/secrets/",
-            "\\system32\\", "\\windows\\config",
-            "kubeconfig", ".kube/config",
-            "azure/", "gcloud/", ".aws/",
-        ];
-        !sensitive.iter().any(|p| lower.contains(p))
+        !SENSITIVE_PATHS.iter().any(|p| lower.contains(p))
     }
 }
 

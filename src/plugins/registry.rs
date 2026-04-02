@@ -8,6 +8,7 @@ pub struct PluginRegistry {
     plugins: Vec<LoadedPlugin>,
 }
 
+#[allow(dead_code)]
 impl PluginRegistry {
     /// Discover and load all plugins from known directories
     pub fn new(cwd: &Path) -> Self {

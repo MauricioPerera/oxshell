@@ -2,6 +2,31 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Mutex;
 
+/// Unified list of sensitive file path patterns.
+/// Used by permissions, file_write, and file_read for consistent blocking.
+pub const SENSITIVE_PATHS: &[&str] = &[
+    // Secrets & credentials
+    ".env", "credentials", ".ssh", "id_rsa", ".gnupg",
+    "/secrets", "/.netrc",
+    // Cloud configs
+    ".aws/", ".kube/config", "kubeconfig",
+    "azure/", "gcloud/",
+    // Package manager tokens
+    ".npmrc", ".pypirc", ".docker/config.json",
+    // System paths (Unix)
+    "/etc/shadow", "/etc/passwd",
+    "/proc/", "/sys/", "/dev/", "/var/run/secrets/",
+    // System paths (Windows)
+    "\\system32\\", "\\windows\\config",
+    "\\appdata\\roaming\\",
+];
+
+/// Check if a path matches any sensitive pattern.
+pub fn is_sensitive_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    SENSITIVE_PATHS.iter().any(|p| lower.contains(p))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolPermission {
     AutoApprove,
@@ -54,18 +79,8 @@ impl PermissionManager {
     fn validate_input(&self, tool_name: &str, input: &Value) -> bool {
         match tool_name {
             "file_write" | "file_edit" => {
-                // Block writes to known sensitive files
                 if let Some(path) = input.get("file_path").and_then(|v| v.as_str()) {
-                    let lower = path.to_lowercase();
-                    let sensitive = [
-                        ".env", "credentials", ".ssh", "id_rsa", ".gnupg",
-                        "/proc/", "/sys/", "/dev/", "/var/run/secrets/",
-                        "\\system32\\", "\\windows\\config",
-                        "kubeconfig", ".kube/config",
-                        "azure/", "gcloud/", ".aws/",
-                    ];
-                    if sensitive.iter().any(|p| lower.contains(p))
-                    {
+                    if is_sensitive_path(path) {
                         tracing::warn!("Blocked write to sensitive path: {path}");
                         return false;
                     }

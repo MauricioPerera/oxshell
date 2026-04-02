@@ -50,6 +50,7 @@ impl ThemeName {
 pub struct Theme {
     pub name: ThemeName,
     /// Background color
+    #[allow(dead_code)]
     pub bg: Color,
     /// Default text
     pub fg: Color,

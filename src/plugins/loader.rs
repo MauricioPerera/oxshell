@@ -5,6 +5,7 @@ use super::manifest::PluginManifest;
 
 /// A loaded plugin with its manifest and resolved paths
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LoadedPlugin {
     pub manifest: PluginManifest,
     pub dir: PathBuf,
@@ -14,6 +15,7 @@ pub struct LoadedPlugin {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum PluginSource {
     /// Loaded from local directory
     Local,

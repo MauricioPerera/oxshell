@@ -17,6 +17,7 @@ pub struct VimState {
     /// Numeric count prefix
     pub count: Option<usize>,
     /// Last change for dot-repeat
+    #[allow(dead_code)]
     pub last_change: Option<String>,
     /// Whether vim mode is enabled
     pub enabled: bool,
@@ -27,6 +28,7 @@ pub enum VimAction {
     /// No action needed (key consumed internally)
     None,
     /// Insert this character at cursor
+    #[allow(dead_code)]
     InsertChar(char),
     /// Delete characters (count)
     Delete(usize),
@@ -55,8 +57,11 @@ pub enum CursorTarget {
     Start,      // 0
     FirstNonBlank, // ^
     End,        // $
+    #[allow(dead_code)]
     WordForward,  // w
+    #[allow(dead_code)]
     WordBack,     // b
+    #[allow(dead_code)]
     WordEnd,      // e
 }
 
@@ -168,6 +173,7 @@ impl VimState {
                 self.mode = VimMode::Insert;
                 VimAction::ChangeToEnd
             }
+            #[allow(unreachable_patterns)]
             'S' | 'c' if self.pending_op == Some('c') => {
                 self.mode = VimMode::Insert;
                 VimAction::DeleteLine

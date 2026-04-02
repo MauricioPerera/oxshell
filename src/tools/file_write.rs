@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 use super::{Tool, ToolOutput};
-use crate::permissions::ToolPermission;
+use crate::permissions::{ToolPermission, is_sensitive_path};
 
 pub struct FileWriteTool;
 
@@ -51,6 +51,7 @@ impl Tool for FileWriteTool {
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' parameter"))?;
 
         let path = Path::new(file_path);
+        let existed = path.exists(); // Check BEFORE write (TOCTOU fix)
 
         // Create parent directories if needed
         if let Some(parent) = path.parent() {
@@ -64,9 +65,9 @@ impl Tool for FileWriteTool {
             let canonical = path.canonicalize()?;
             let canonical_str = canonical.to_string_lossy().to_lowercase();
             if is_sensitive_path(&canonical_str) {
-                return Ok(ToolOutput::error(format!(
-                    "Access denied: cannot write to sensitive path"
-                )));
+                return Ok(ToolOutput::error(
+                    "Access denied: cannot write to sensitive path".to_string(),
+                ));
             }
             std::fs::write(&canonical, content)?;
         } else {
@@ -100,7 +101,6 @@ impl Tool for FileWriteTool {
 
         let line_count = content.lines().count();
         let byte_count = content.len();
-        let existed = path.exists();
         let action = if existed { "Updated" } else { "Created" };
         Ok(ToolOutput::success(format!(
             "{action} {file_path} ({line_count} lines, {byte_count} bytes)"
@@ -108,12 +108,4 @@ impl Tool for FileWriteTool {
     }
 }
 
-fn is_sensitive_path(lower_path: &str) -> bool {
-    let patterns = [
-        "/etc/shadow", "/etc/passwd", "/.ssh/", "/credentials",
-        "/.env", "/secrets", "/.aws/", "/.gnupg/", "/id_rsa",
-        "/proc/", "/sys/", "/dev/", "/var/run/secrets/",
-        "\\system32\\", "\\windows\\", "\\appdata\\roaming\\",
-    ];
-    patterns.iter().any(|p| lower_path.contains(p))
-}
+// Sensitive path check: uses crate::permissions::is_sensitive_path (unified list)

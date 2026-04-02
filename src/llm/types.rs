@@ -55,6 +55,7 @@ impl Message {
     }
 
     /// Extract text content
+    #[allow(dead_code)]
     pub fn text(&self) -> &str {
         self.content.as_deref().unwrap_or("")
     }
@@ -130,6 +131,7 @@ pub struct ChatCompletionRequest {
 // ─── API Response (OpenAI-compatible) ───────────────────
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct ChatCompletionResponse {
     #[serde(default)]
     pub id: String,
@@ -141,6 +143,7 @@ pub struct ChatCompletionResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Choice {
     pub index: u32,
     #[serde(default)]
@@ -152,6 +155,7 @@ pub struct Choice {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct ChatMessage {
     pub role: Option<Role>,
     pub content: Option<String>,
@@ -205,6 +209,7 @@ impl ChatMessage {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct DeltaMessage {
     pub role: Option<Role>,
     pub content: Option<String>,
@@ -213,6 +218,7 @@ pub struct DeltaMessage {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct DeltaToolCall {
     pub index: Option<u32>,
     pub id: Option<String>,
@@ -222,6 +228,7 @@ pub struct DeltaToolCall {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct DeltaFunction {
     pub name: Option<String>,
     pub arguments: Option<String>,
@@ -285,6 +292,7 @@ pub struct FunctionDefinition {
 // ─── Streaming Events ───────────────────────────────────
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum StreamEvent {
     /// Text delta from assistant
     TextDelta(String),

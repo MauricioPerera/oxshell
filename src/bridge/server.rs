@@ -25,6 +25,7 @@ pub struct AppState {
     pub tool_schema: Vec<crate::llm::types::ToolDefinition>,
     pub started_at: Instant,
     /// Cached reqwest client (reuse connections)
+    #[allow(dead_code)]
     pub http_client: reqwest::Client,
     /// Active session count
     pub active_sessions: AtomicUsize,

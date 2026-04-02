@@ -53,7 +53,7 @@ async fn execute_forked(
     let tool_schema = tools.schema();
     let mut final_text = String::new();
 
-    for turn in 0..MAX_TURNS {
+    for _turn in 0..MAX_TURNS {
         let response = client
             .send_message(system_prompt, &messages, &tool_schema)
             .await?;

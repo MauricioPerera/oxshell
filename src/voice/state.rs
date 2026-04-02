@@ -10,6 +10,7 @@ pub enum VoiceMode {
     /// Processing audio (sending to STT)
     Processing,
     /// Error state (mic not available, etc.)
+    #[allow(dead_code)]
     Error,
 }
 
@@ -70,6 +71,7 @@ impl VoiceState {
     }
 
     /// Set error state
+    #[allow(dead_code)]
     pub fn set_error(&mut self, error: String) {
         self.error = Some(error);
         self.mode = VoiceMode::Error;
@@ -86,6 +88,7 @@ impl VoiceState {
     }
 
     /// Get status text for display
+    #[allow(dead_code)]
     pub fn status_text(&self) -> &str {
         match self.mode {
             VoiceMode::Disabled => "Voice: unavailable",

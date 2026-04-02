@@ -88,6 +88,7 @@ impl SessionStore {
     }
 
     /// Rewrite an entire session file (used after compaction)
+    #[allow(dead_code)]
     pub fn rewrite(&self, session_id: &str, entries: &[SessionEntry]) -> Result<()> {
         if let Some(path) = self.find_session_path(session_id) {
             let temp = path.with_extension("jsonl.tmp");

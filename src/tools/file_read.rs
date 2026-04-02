@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 use super::{Tool, ToolOutput};
-use crate::permissions::ToolPermission;
+use crate::permissions::{ToolPermission, is_sensitive_path};
 
 pub struct FileReadTool;
 
@@ -29,16 +29,10 @@ pub fn safe_resolve_path(file_path: &str) -> Result<PathBuf, String> {
         .canonicalize()
         .map_err(|_| format!("Path not found or inaccessible: {file_path}"))?;
 
-    // Block known sensitive paths
+    // Block known sensitive paths (unified list from permissions module)
     let canonical_str = canonical.to_string_lossy().to_lowercase();
-    let blocked = [
-        "/etc/shadow", "/etc/passwd", "/.ssh/", "/credentials",
-        "/.env", "/secrets", "/.aws/", "/.gnupg/",
-    ];
-    for pattern in &blocked {
-        if canonical_str.contains(pattern) {
-            return Err(format!("Access denied: path matches blocked pattern '{pattern}'"));
-        }
+    if is_sensitive_path(&canonical_str) {
+        return Err("Access denied: path matches sensitive pattern".to_string());
     }
 
     Ok(canonical)

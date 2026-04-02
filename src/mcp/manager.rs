@@ -147,6 +147,7 @@ impl MCPManager {
     }
 
     /// Number of connected servers
+    #[allow(dead_code)]
     pub fn server_count(&self) -> usize {
         self.transports.len()
     }
